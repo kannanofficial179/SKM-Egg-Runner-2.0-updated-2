@@ -1,0 +1,8 @@
+{
+  "name": "SKM Egg Runner",
+  "description": "An endless 3D runner game inspired by Subway Surfers featuring a cute egg/chicken running through farms and production zones",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
