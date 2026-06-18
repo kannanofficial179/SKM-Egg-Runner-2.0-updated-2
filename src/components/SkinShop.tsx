@@ -14,7 +14,6 @@ export const skinsList: Skin[] = [
   {
     id: 'skin_classic',
     name: 'Default White Egg',
-    description: 'The original pure white egg shell runner athlete.',
     cost: 0,
     currency: 'eggs',
     unlocked: true,
@@ -26,7 +25,6 @@ export const skinsList: Skin[] = [
   {
     id: 'skin_farmer',
     name: 'Farmer Egg',
-    description: 'A cute agricultural specialist egg wearing virtual denim overalls and protective straw accents.',
     cost: 10,
     currency: 'eggs',
     unlocked: false,
@@ -38,7 +36,6 @@ export const skinsList: Skin[] = [
   {
     id: 'skin_golden',
     name: 'Golden Egg',
-    description: 'Extremely rare, brilliant solid-gold shell structure reflecting farm sunshine.',
     cost: 25,
     currency: 'eggs',
     unlocked: false,
@@ -50,7 +47,6 @@ export const skinsList: Skin[] = [
   {
     id: 'skin_champion',
     name: 'Champion Egg',
-    description: 'Prized egg of the champion chicken leagues, detailed with professional metallic blue race paint.',
     cost: 50,
     currency: 'eggs',
     unlocked: false,
@@ -62,7 +58,6 @@ export const skinsList: Skin[] = [
   {
     id: 'skin_premium',
     name: 'SKM Premium Egg',
-    description: 'An elite industrial-grade cargo-safe premium shell with emerald lines and maximum structural integrity.',
     cost: 90,
     currency: 'eggs',
     unlocked: false,

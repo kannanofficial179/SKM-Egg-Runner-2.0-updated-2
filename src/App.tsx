@@ -87,7 +87,6 @@ const DEFAULT_ACHIEVEMENTS: Achievement[] = [
   {
     id: 'a1',
     name: 'Industrial Mogul',
-    description: 'Collect a cumulative total of 1,000 feeds',
     progress: 0,
     target: 1000,
     completed: false,
@@ -98,7 +97,6 @@ const DEFAULT_ACHIEVEMENTS: Achievement[] = [
   {
     id: 'a2',
     name: 'Countryside Voyager',
-    description: 'Accumulate a total run distance of 15,000 meters',
     progress: 0,
     target: 15000,
     completed: false,
