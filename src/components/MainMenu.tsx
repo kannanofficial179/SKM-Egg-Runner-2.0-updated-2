@@ -150,11 +150,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 
         {/* Settings button & General highscore feedback */}
         <div className="flex flex-col items-end gap-2">
-          {/* High Score Badge */}
-          <div className="bg-slate-900/90 border border-slate-800 px-3.5 py-1.5 rounded-lg text-right backdrop-blur shadow-md">
-            <span className="text-[10px] text-slate-400 font-mono block">PERSONAL BEST</span>
-            <span className="text-sm font-black text-amber-400 font-mono">{stats.highscore.toLocaleString()} pts</span>
-          </div>
+          
 
           {/* Quick Settings Button */}
           <div className="flex gap-1">

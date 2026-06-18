@@ -104,7 +104,7 @@ export const LeaderboardPanel: React.FC<LeaderboardPanelProps> = ({
           <WifiOff className="w-5 h-5 text-amber-500 shrink-0" />
           <div className="font-mono text-[9px] leading-relaxed text-slate-400">
             <span className="text-amber-500 font-black block uppercase">LOCAL RUNS ARCHIVE (ONLINE STANDBY)</span>
-            No external database connected. <span className="text-yellow-400 font-extrabold font-sans">Online rankings coming soon.</span> Keep practising to claim the #1 global crown!
+             <span className="text-yellow-400 font-extrabold font-sans"><h1>Online rankings coming soon.</h1></span> 
           </div>
         </div>
 
