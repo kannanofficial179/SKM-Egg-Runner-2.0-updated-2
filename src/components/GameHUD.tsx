@@ -65,7 +65,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div className="absolute top-18 left-1/2 pointer-events-auto flex flex-col items-center gap-1 bg-slate-900/95 border border-slate-800 rounded-2xl px-3 py-1.5 backdrop-blur shadow-2xl w-[45vw] max-w-[245px] min-w-[150px] responsive-hud-center">
         <div className="flex items-center gap-1">
           <span className="text-xs">
-            {isStage2 ? '🤎' : currentStage === 'EGG' ? '🥚' : currentStage === 'CHICK' ? '🐥' : '🏆'}
+            {isStage2 ? '🥚' : currentStage === 'EGG' ? '🥚' : currentStage === 'CHICK' ? '🐥' : '🏆'}
           </span>
           <span className="text-[8px] font-black text-amber-300 font-mono tracking-wider leading-none uppercase">
             {isStage2 ? 'EXTREME MODE' : currentStage === 'EGG' ? 'EGG STAGE' : currentStage === 'CHICK' ? 'CHICK STAGE' : 'CHICKEN CHAMPION'}

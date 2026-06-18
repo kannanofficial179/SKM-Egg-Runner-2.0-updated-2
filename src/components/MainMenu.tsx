@@ -139,30 +139,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     onClaimDailyReward(currentReward.type, currentReward.value);
   };
 
-  const nextLevelXp = stats.level * 1000;
-  const xpPct = Math.min(100, Math.round((stats.xp / nextLevelXp) * 100));
+
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col justify-between p-6 bg-gradient-to-b from-slate-950/40 via-transparent to-slate-950/80 pointer-events-none">
       
       {/* Top Profile Badge & Sound Toggles */}
       <div className="flex justify-between items-start w-full pointer-events-auto">
-        {/* User Card */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center gap-3 backdrop-blur shadow-2xl">
-          <div className="w-10 h-10 rounded-full bg-yellow-500 border-2 border-yellow-400 flex items-center justify-center font-bold text-slate-950 text-sm font-sans flex-shrink-0">
-            Lvl {stats.level}
-          </div>
-          <div className="min-w-0">
-            <h4 className="text-white text-xs font-bold leading-none font-sans">SKM Poultry Runner</h4>
-            {/* XP Bar */}
-            <div className="mt-1.5 flex items-center gap-2">
-              <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="bg-yellow-400 h-full transition-all" style={{ width: `${xpPct}%` }} />
-              </div>
-              <span className="text-[9px] text-slate-400 font-mono">{stats.xp}/{nextLevelXp} XP</span>
-            </div>
-          </div>
-        </div>
+
 
         {/* Settings button & General highscore feedback */}
         <div className="flex flex-col items-end gap-2">

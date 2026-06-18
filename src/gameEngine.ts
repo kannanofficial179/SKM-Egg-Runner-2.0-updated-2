@@ -9296,10 +9296,6 @@ export class SKMRunnerEngine {
     headerBeam.castShadow = true;
     this.factoryGateGroup.add(headerBeam);
 
-    // "SKM POULTRY" Signboard plate
-    const signPlate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 0.1), redMat);
-    signPlate.position.set(0, 3.6, 0.1);
-    this.factoryGateGroup.add(signPlate);
 
     // Hazard yellow/black striping on left panel
     this.factoryGateLeftPanel = new THREE.Mesh(

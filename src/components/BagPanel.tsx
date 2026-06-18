@@ -122,7 +122,7 @@ export const BagPanel: React.FC<BagPanelProps> = ({
               </div>
 
               <div className="bg-slate-950/60 border border-slate-850 p-3 rounded-2xl flex items-center gap-3">
-                <span className="text-2xl">🤎</span>
+                <span className="text-2xl">🥚</span>
                 <div className="text-left">
                   <span className="text-[9px] text-slate-400 font-semibold block leading-none">BROWN EGGS</span>
                   <span className="text-base font-black text-amber-600 leading-tight block mt-0.5">

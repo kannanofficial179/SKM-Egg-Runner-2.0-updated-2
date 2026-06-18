@@ -385,26 +385,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
             BUTTONS CONTROLLER (BOTTOM OF CARD)
             ================================================== */}
         <div className="mt-3.5 px-2 flex flex-col gap-2 relative z-10 w-full">
-          
-          {/* OPTIONAL / COMPACT REVIVE SECTION */}
-          {(playerGemsBalance > 0 || gems > 0) && (
-            <button
-              onClick={handleReviveClick}
-              className={`w-full py-1.5 px-3 rounded-xl transition-all duration-200 flex items-center justify-between text-[10px] uppercase cursor-pointer border shadow-sm transform active:scale-[0.98] ${
-                canContinue
-                  ? 'bg-emerald-550 hover:bg-emerald-600 border-emerald-450 text-white font-black'
-                  : 'bg-red-950/40 hover:bg-red-950/50 border-red-900 text-red-200 font-bold'
-              }`}
-            >
-              <div className="flex items-center gap-1">
-                <HeartPulse className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-                <span className="tracking-wide">Want to Revive? (Needs 3 🥚)</span>
-              </div>
-              <span className="font-mono bg-black/25 px-1.5 py-0.5 rounded-full">
-                Have: 🥚 {playerGemsBalance}
-              </span>
-            </button>
-          )}
+      
 
           {/* Bottom Action Bar: Horizontal circular button row */}
           <div className="flex items-center justify-center gap-6 mt-1 mb-1 relative z-10 w-full">
