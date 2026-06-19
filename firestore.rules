@@ -1,0 +1,123 @@
+rules_version = '2';
+
+// ──────────────────────────────────────────────────────────────
+// SKM EGG RUNNER — Firestore Security Rules
+// Every read/write must have an authenticated user.
+// Players can only read/write their own documents.
+// Leaderboard is public-read; players write only their own record.
+// gameConfig is admin-only write.
+// ──────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ──────────────────────
+    // Helper functions
+    // ──────────────────────
+
+    // True if the request is from a signed-in user
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // True if the authenticated user's uid matches the document's uid field
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // True if the incoming data contains only the allowed fields
+    function onlyFields(allowed) {
+      return request.resource.data.keys().hasOnly(allowed);
+    }
+
+    // ──────────────────────
+    // users/{uid}
+    // ──────────────────────
+    match /users/{uid} {
+      // Players can read and write only their own profile
+      allow read:   if isOwner(uid);
+      allow create: if isOwner(uid)
+                    && request.resource.data.uid == uid
+                    && request.resource.data.playerName is string
+                    && request.resource.data.playerName.size() >= 2
+                    && request.resource.data.playerName.size() <= 30;
+      allow update: if isOwner(uid);
+      allow delete: if false; // Never allow client-side deletes
+    }
+
+    // ──────────────────────
+    // leaderboard/{uid}
+    // ──────────────────────
+    match /leaderboard/{uid} {
+      // Anyone can read the leaderboard (for top-100 queries)
+      allow read: if isAuth();
+
+      // Players can only write their own leaderboard record
+      allow create: if isOwner(uid)
+                    && request.resource.data.uid == uid
+                    && request.resource.data.score is int
+                    && request.resource.data.score >= 0
+                    && request.resource.data.distance >= 0
+                    && request.resource.data.playerName is string
+                    && request.resource.data.playerName.size() >= 2;
+
+      allow update: if isOwner(uid)
+                    // Can only improve their score, not decrease it
+                    && request.resource.data.score >= resource.data.score;
+
+      allow delete: if false;
+    }
+
+    // ──────────────────────
+    // missions/{uid}/daily/{missionId}
+    // ──────────────────────
+    match /missions/{uid}/daily/{missionId} {
+      allow read:   if isOwner(uid);
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid)
+                    // Progress must not exceed target
+                    && request.resource.data.progress <= resource.data.target
+                    && request.resource.data.progress >= 0
+                    // Cannot un-claim a mission
+                    && (resource.data.claimed == false || request.resource.data.claimed == true);
+      allow delete: if false;
+    }
+
+    // ──────────────────────
+    // achievements/{uid}/list/{achievementId}
+    // ──────────────────────
+    match /achievements/{uid}/list/{achievementId} {
+      allow read:   if isOwner(uid);
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid)
+                    && request.resource.data.progress >= 0
+                    && request.resource.data.progress <= resource.data.target
+                    && (resource.data.claimed == false || request.resource.data.claimed == true);
+      allow delete: if false;
+    }
+
+    // ──────────────────────
+    // settings/{uid}
+    // ──────────────────────
+    match /settings/{uid} {
+      allow read:   if isOwner(uid);
+      allow write:  if isOwner(uid)
+                    && onlyFields(['uid', 'musicEnabled', 'sfxEnabled', 'vibrationEnabled', 'updatedAt']);
+    }
+
+    // ──────────────────────
+    // gameConfig/active  (developer-only write)
+    // ──────────────────────
+    match /gameConfig/{docId} {
+      // All authenticated players can read game config (needed to sync balance settings)
+      allow read: if isAuth();
+
+      // Only write via Admin SDK (server-side) or from a verified developer account.
+      // In production: restrict this to a specific admin UID or use Firebase Admin SDK.
+      // Replace YOUR_DEVELOPER_UID with the actual Firebase UID of your developer account.
+      allow write: if isAuth()
+                   && request.auth.uid == 'YOUR_DEVELOPER_UID';
+    }
+
+  }
+}

@@ -17,16 +17,19 @@ import {
   ThemeType
 } from './types';
 
-// Subcomponents
-import MainMenu from './components/MainMenu';
-import GameHUD from './components/GameHUD';
-import PauseMenu from './components/PauseMenu';
-import GameOverScreen from './components/GameOverScreen';
-import { SkinShop, skinsList } from './components/SkinShop';
-import { MissionsPanel } from './components/MissionsPanel';
-import { LeaderboardPanel } from './components/LeaderboardPanel';
-import { BagPanel } from './components/BagPanel';
-import { SettingsModal } from './components/SettingsModal';
+// Frontend UI (screens, hud, modals)
+import {
+  MainMenu,
+  GameHUD,
+  PauseMenu,
+  GameOverScreen,
+  SkinShop,
+  skinsList,
+  MissionsPanel,
+  LeaderboardPanel,
+  BagPanel,
+  SettingsModal
+} from './frontend';
 import { syncConfigWithServer, addDebugLog, getActiveLiveConfig } from './liveConfig';
 
 const STORAGE_STATS_KEY = 'skm_chicken_run_stats_v1';
@@ -87,6 +90,7 @@ const DEFAULT_ACHIEVEMENTS: Achievement[] = [
   {
     id: 'a1',
     name: 'Industrial Mogul',
+    description: 'Collect 1,000 feed bags across all runs',
     progress: 0,
     target: 1000,
     completed: false,
@@ -97,6 +101,7 @@ const DEFAULT_ACHIEVEMENTS: Achievement[] = [
   {
     id: 'a2',
     name: 'Countryside Voyager',
+    description: 'Run a total of 15,000 meters across all runs',
     progress: 0,
     target: 15000,
     completed: false,
@@ -358,7 +363,7 @@ export default function App() {
 
         setRunStats((prev) => {
           // Update distance-based mission parameters
-          updateMaxMissionProgress('m2', distance);
+          updateMissionProgress('m2', distance, 'highwater');
           updateAchievementProgress('a2', distance - prev.distance);
 
           return { ...prev, distance };
@@ -432,29 +437,16 @@ export default function App() {
     return () => clearInterval(timer);
   }, [gameState]);
 
-  // Helper selectors to make edits safe
-  const updateMissionProgress = (id: string, amount: number) => {
+  // accumulate: adds amount to current progress (feed counts, golden bags)
+  // highwater: only advances if amount exceeds current (distance-based)
+  const updateMissionProgress = (id: string, amount: number, mode: 'accumulate' | 'highwater' = 'accumulate') => {
     setMissions((prev) => {
       const next = prev.map((m) => {
-        if (m.id === id && !m.claimed) {
-          const progress = Math.min(m.target, m.progress + amount);
-          return { ...m, progress, completed: progress >= m.target };
-        }
-        return m;
-      });
-      localStorage.setItem(STORAGE_MISSIONS_KEY, JSON.stringify(next));
-      return next;
-    });
-  };
-
-  const updateMaxMissionProgress = (id: string, amount: number) => {
-    setMissions((prev) => {
-      const next = prev.map((m) => {
-        if (m.id === id && !m.claimed) {
-          const progress = Math.max(m.progress, Math.min(m.target, amount));
-          return { ...m, progress, completed: progress >= m.target };
-        }
-        return m;
+        if (m.id !== id || m.claimed) return m;
+        const progress = mode === 'highwater'
+          ? Math.max(m.progress, Math.min(m.target, amount))
+          : Math.min(m.target, m.progress + amount);
+        return { ...m, progress, completed: progress >= m.target };
       });
       localStorage.setItem(STORAGE_MISSIONS_KEY, JSON.stringify(next));
       return next;
@@ -462,16 +454,31 @@ export default function App() {
   };
 
   const updateAchievementProgress = (id: string, amount: number) => {
-    setAchievements((prev) => {
-      const next = prev.map((a) => {
-        if (a.id === id && !a.claimed) {
-          const progress = Math.min(a.target, a.progress + amount);
-          return { ...a, progress, completed: progress >= a.target };
-        }
-        return a;
+    setAchievements((prev: Achievement[]) => {
+      const next = prev.map((a: Achievement) => {
+        if (a.id !== id || a.claimed) return a;
+        const progress = Math.min(a.target, a.progress + amount);
+        return { ...a, progress, completed: progress >= a.target };
       });
       localStorage.setItem(STORAGE_ACHIEVEMENTS_KEY, JSON.stringify(next));
       return next;
+    });
+  };
+
+  const applyRewardToStats = (rewardType: 'feeds' | 'gems' | 'xp', rewardValue: number) => {
+    setStats((prev: PlayerStats) => {
+      let { totalFeeds, totalGems, xp, level } = prev;
+      if (rewardType === 'feeds') {
+        totalFeeds += rewardValue;
+      } else if (rewardType === 'gems') {
+        totalGems += rewardValue;
+      } else if (rewardType === 'xp') {
+        xp += rewardValue;
+        while (xp >= level * 1000) { xp -= level * 1000; level += 1; }
+      }
+      const updated = { ...prev, totalFeeds, totalGems, xp, level };
+      localStorage.setItem(STORAGE_STATS_KEY, JSON.stringify(updated));
+      return updated;
     });
   };
 
@@ -758,37 +765,13 @@ export default function App() {
     const mission = missions.find(m => m.id === id);
     if (!mission) return;
 
-    setMissions((prev) => {
-      const next = prev.map((m) => (m.id === id ? { ...m, claimed: true, completed: true } : m));
+    setMissions((prev: Mission[]) => {
+      const next = prev.map((m: Mission) => (m.id === id ? { ...m, claimed: true, completed: true } : m));
       localStorage.setItem(STORAGE_MISSIONS_KEY, JSON.stringify(next));
       return next;
     });
 
-    // Credit reward
-    setStats((prev) => {
-      let totalFeeds = prev.totalFeeds;
-      let totalGems = prev.totalGems;
-      let xp = prev.xp;
-      let level = prev.level;
-
-      if (mission.rewardType === 'feeds') {
-        totalFeeds += mission.rewardValue;
-      } else if (mission.rewardType === 'gems') {
-        totalGems += mission.rewardValue;
-      } else if (mission.rewardType === 'xp') {
-        xp += mission.rewardValue;
-        const xpThreshold = level * 1000;
-        while (xp >= xpThreshold) {
-          xp -= xpThreshold;
-          level += 1;
-        }
-      }
-
-      const updated = { ...prev, totalFeeds, totalGems, xp, level };
-      localStorage.setItem(STORAGE_STATS_KEY, JSON.stringify(updated));
-      return updated;
-    });
-
+    applyRewardToStats(mission.rewardType, mission.rewardValue);
     showToast(`Claimed Mission Reward: +${mission.rewardValue} ${mission.rewardType.toUpperCase()}! 🌾💎`);
   };
 
@@ -796,27 +779,13 @@ export default function App() {
     const ach = achievements.find(a => a.id === id);
     if (!ach) return;
 
-    setAchievements((prev) => {
-      const next = prev.map((a) => (a.id === id ? { ...a, claimed: true, completed: true } : a));
+    setAchievements((prev: Achievement[]) => {
+      const next = prev.map((a: Achievement) => (a.id === id ? { ...a, claimed: true, completed: true } : a));
       localStorage.setItem(STORAGE_ACHIEVEMENTS_KEY, JSON.stringify(next));
       return next;
     });
 
-    setStats((prev) => {
-      let totalFeeds = prev.totalFeeds;
-      let totalGems = prev.totalGems;
-
-      if (ach.rewardType === 'feeds') {
-        totalFeeds += ach.rewardValue;
-      } else if (ach.rewardType === 'gems') {
-        totalGems += ach.rewardValue;
-      }
-
-      const updated = { ...prev, totalFeeds, totalGems };
-      localStorage.setItem(STORAGE_STATS_KEY, JSON.stringify(updated));
-      return updated;
-    });
-
+    applyRewardToStats(ach.rewardType, ach.rewardValue);
     showToast(`Claimed Badge: +${ach.rewardValue} ${ach.rewardType.toUpperCase()}! 🏆💎`);
   };
 

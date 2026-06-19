@@ -8,7 +8,7 @@ export type CurrencyType = 'feeds' | 'gems' | 'eggs';
 export interface Skin {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   cost: number;
   currency: CurrencyType;
   unlocked: boolean;
@@ -80,7 +80,7 @@ export enum PowerUpType {
 
 export interface PowerUpState {
   type: PowerUpType;
-  timeLeft: number; // milliseonds or seconds
+  timeLeft: number; // milliseconds or seconds
   duration: number; // total length
 }
 
