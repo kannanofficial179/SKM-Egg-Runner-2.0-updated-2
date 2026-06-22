@@ -33,6 +33,8 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/firebase';
 import { getActiveLiveConfig } from '../../liveConfig';
+import { todayKey, startOfToday, startOfWeek, nowTimeStr } from '../../utils/dateHelpers';
+import { STOP_WORDS, tokenize, levenshtein } from '../../utils/textHelpers';
 
 // ─────────────────────────────────────────────
 // Types
@@ -105,29 +107,11 @@ function classifyError(err: unknown, collection: string): string {
 // Internal helpers
 // ─────────────────────────────────────────────
 
-function nowStr(): string {
-  return new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function startOfWeek(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
-}
-
-function todayKey(): string {
-  return new Date().toISOString().split('T')[0];
-}
+// todayKey, startOfToday, startOfWeek, nowTimeStr imported from utils/dateHelpers
+// STOP_WORDS, tokenize, levenshtein imported from utils/textHelpers
 
 function makeMeta(source: string, records: number, t0: number, confidence: DevMeta['confidence'] = '100%'): DevMeta {
-  return { source, records, execMs: Date.now() - t0, timestamp: nowStr(), confidence };
+  return { source, records, execMs: Date.now() - t0, timestamp: nowTimeStr(), confidence };
 }
 
 // ─────────────────────────────────────────────
@@ -1340,20 +1324,7 @@ const COMMANDS: CommandEntry[] = [
 //   3. Fuzzy suggestion (if nothing scores well)
 // ─────────────────────────────────────────────
 
-// English stop words that carry no intent signal
-const STOP_WORDS = new Set([
-  'a','an','the','is','are','was','were','be','been','being',
-  'have','has','had','do','does','did','will','would','could','should',
-  'may','might','shall','can','need','dare','ought','used',
-  'i','me','my','we','our','you','your','he','she','it','they','them',
-  'this','that','these','those','what','which','who','whom','how','when','where','why',
-  'all','any','both','each','few','more','most','other','some','such',
-  'no','not','only','same','so','than','too','very','just','but','and','or',
-  'for','of','with','at','by','from','up','about','into','through','during',
-  'show','tell','give','get','display','list','find','check','report',
-  'me','us','please','can','could','would','like','want','need','see',
-  'in','on','to','as','if','then','there','here','much','many','number','count',
-]);
+// STOP_WORDS, tokenize, levenshtein imported from utils/textHelpers
 
 // Keyword map: each entry defines signal words for an intent
 // cmdIndex maps to the COMMANDS array (0-based, ordered as declared above)
@@ -1406,27 +1377,7 @@ const INTENT_LIBRARY: IntentDef[] = [
   { label: 'Help / Commands',        keywords: ['help','commands','command','list','available','options','usage','examples'],    cmdIndex: 30 },
 ];
 
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(t => t.length > 1 && !STOP_WORDS.has(t));
-}
-
-// Simple Levenshtein distance for fuzzy matching
-function levenshtein(a: string, b: string): number {
-  const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i]);
-  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    }
-  }
-  return dp[a.length][b.length];
-}
+// tokenize and levenshtein imported from utils/textHelpers
 
 // Score a query against one intent definition
 function scoreIntent(queryTokens: string[], intent: IntentDef): number {

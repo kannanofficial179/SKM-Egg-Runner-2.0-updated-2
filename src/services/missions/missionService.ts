@@ -19,6 +19,7 @@ import {
 import { db } from '../firebase/firebase';
 import type { Mission } from '../../types';
 import { generateDailyMissions } from '../../missionGenerator';
+import { todayKey } from '../../utils/dateHelpers';
 
 // ─────────────────────────────────────────────
 // Firestore schema — missions/{uid}/daily/{missionId}
@@ -29,11 +30,6 @@ export interface FirestoreMission extends Mission {
   dateKey:     string;     // YYYY-MM-DD — which day the mission was generated
   generatedAt: Timestamp | null;
   updatedAt:   Timestamp | null;
-}
-
-// Today's date key (UTC)
-function todayKey(): string {
-  return new Date().toISOString().split('T')[0];
 }
 
 function missionPath(uid: string): string {

@@ -20,19 +20,40 @@ import {
   increment,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
+// Shared utilities — single source of truth
+import {
+  todayKey as _todayKey,
+  dateKeyFor as _dateKeyFor,
+  dayLabel as _dayLabel,
+  getLast7Days as _getLast7Days,
+  getLast30Days as _getLast30Days,
+  getWeekKey as _getWeekKey,
+  getMonthKey as _getMonthKey,
+} from '../../utils/dateHelpers';
+import {
+  PROTEIN_PER_EGG as _PROTEIN_PER_EGG,
+  CALORIES_PER_EGG as _CALORIES_PER_EGG,
+  DEFAULT_DAILY_GOAL as _DEFAULT_DAILY_GOAL,
+  XP_PER_EGG as _XP_PER_EGG,
+  XP_PER_GOAL as _XP_PER_GOAL,
+  XP_PER_STREAK_DAY as _XP_PER_STREAK_DAY,
+  COINS_PER_EGG as _COINS_PER_EGG,
+  COINS_PER_GOAL as _COINS_PER_GOAL,
+} from '../../constants/tracker';
 
 // ─────────────────────────────────────────────────────────────
-// CONSTANTS
+// CONSTANTS — re-exported for backward compatibility
+// (all callers import from here; the values live in constants/tracker.ts)
 // ─────────────────────────────────────────────────────────────
 
-export const PROTEIN_PER_EGG   = 6;
-export const CALORIES_PER_EGG  = 78;
-export const DEFAULT_DAILY_GOAL = 60;
-export const XP_PER_EGG         = 10;
-export const XP_PER_GOAL        = 25;
-export const XP_PER_STREAK_DAY  = 50;
-export const COINS_PER_EGG      = 5;
-export const COINS_PER_GOAL     = 20;
+export const PROTEIN_PER_EGG   = _PROTEIN_PER_EGG;
+export const CALORIES_PER_EGG  = _CALORIES_PER_EGG;
+export const DEFAULT_DAILY_GOAL = _DEFAULT_DAILY_GOAL;
+export const XP_PER_EGG         = _XP_PER_EGG;
+export const XP_PER_GOAL        = _XP_PER_GOAL;
+export const XP_PER_STREAK_DAY  = _XP_PER_STREAK_DAY;
+export const COINS_PER_EGG      = _COINS_PER_EGG;
+export const COINS_PER_GOAL     = _COINS_PER_GOAL;
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -143,48 +164,17 @@ export interface RewardWallet {
 }
 
 // ─────────────────────────────────────────────────────────────
-// DATE HELPERS
+// DATE HELPERS — re-exported from utils/dateHelpers for backward compat
+// All callers that import these from proteinTrackerService continue to work.
 // ─────────────────────────────────────────────────────────────
 
-export function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-export function dateKeyFor(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-export function dayLabel(dateKey: string): string {
-  return new Date(dateKey + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-}
-
-export function getLast7Days(): string[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    return dateKeyFor(d);
-  });
-}
-
-export function getLast30Days(): string[] {
-  return Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (29 - i));
-    return dateKeyFor(d);
-  });
-}
-
-export function getWeekKey(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diff));
-  return dateKeyFor(monday);
-}
-
-export function getMonthKey(): string {
-  return new Date().toISOString().slice(0, 7);
-}
+export const todayKey     = _todayKey;
+export const dateKeyFor   = _dateKeyFor;
+export const dayLabel     = _dayLabel;
+export const getLast7Days = _getLast7Days;
+export const getLast30Days = _getLast30Days;
+export const getWeekKey   = _getWeekKey;
+export const getMonthKey  = _getMonthKey;
 
 // ─────────────────────────────────────────────────────────────
 // TRACKER SETTINGS
