@@ -276,27 +276,45 @@ function QRAccessModal({
         async (decoded) => {
           if (handledRef.current) return;
           handledRef.current = true;
-          await stopScanner();
+
+          // Stop scanner first — fire-and-forget so it never blocks validation
+          stopScanner().catch(() => {});
           setScanMsg('Validating…');
-          const result = await validateAndUseQR(decoded);
-          if (result.ok === true) {
-            // Persist Golden QR status so App.tsx can enable unlimited retry
-            if (result.unlimited) {
-              sessionStorage.setItem('skm_golden_qr', 'true');
-              console.log('[QR] Golden QR detected — unlimited retry enabled');
-            } else {
-              sessionStorage.removeItem('skm_golden_qr');
-              console.log('[QR] Normal QR detected — remaining:', result.remaining);
-            }
-            setScanSuccess(true);
-            setScanMsg(result.unlimited ? 'Golden QR Verified — Unlimited Access!' : 'QR Verified — Starting game…');
-            setScanError(null);
-            closeWith(onConfirm);
-          } else {
+          setScanError(null);
+
+          let result: Awaited<ReturnType<typeof validateAndUseQR>>;
+          try {
+            result = await validateAndUseQR(decoded);
+          } catch {
             handledRef.current = false;
-            setScanError(result.message);
+            setScanError('Validation Timeout. Please try again.');
             setScanMsg('');
             setScanSuccess(false);
+            return;
+          }
+
+          if (result.ok === true) {
+            if (result.unlimited) {
+              sessionStorage.setItem('skm_golden_qr', 'true');
+            } else {
+              sessionStorage.removeItem('skm_golden_qr');
+            }
+            setScanSuccess(true);
+            setScanError(null);
+            setScanMsg(result.unlimited ? '✓ Access Granted — Unlimited Play!' : '✓ Access Granted — Starting game…');
+            // Navigate after 1 second — don't call closeWith (avoids double-stopScanner hang)
+            setTimeout(() => onConfirm(), 1000);
+          } else {
+            handledRef.current = false;
+            setScanSuccess(false);
+            setScanMsg('');
+            setScanError(
+              result.reason === 'LIMIT_REACHED'
+                ? 'QR Usage Limit Reached. This QR has been fully used.'
+                : result.reason === 'INACTIVE'
+                ? 'QR Invalid. This code has been disabled.'
+                : result.message,
+            );
           }
         },
         () => {}
@@ -314,10 +332,8 @@ function QRAccessModal({
 
   const closeWith = (cb?: () => void) => {
     setVisible(false);
-    setTimeout(() => {
-      stopScanner();
-      cb ? cb() : onCancel();
-    }, 250);
+    // stopScanner already called before validation — don't call again here
+    setTimeout(() => { cb ? cb() : onCancel(); }, 250);
   };
 
   const overlayStyle: React.CSSProperties = {

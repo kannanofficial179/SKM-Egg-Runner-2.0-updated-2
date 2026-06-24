@@ -89,8 +89,28 @@ export async function validateEggForProtein(rawCode: string): Promise<EggQRValid
  * Validates a scanned QR code against Firestore and atomically increments
  * playCount if the code is valid and under its maxPlays limit.
  */
+// Extract QR code ID from either a bare code or a full URL.
+// Handles: "EGG-000001", "https://skm-egg-runner.vercel.app/?qr=EGG-000001"
+function extractCode(raw: string): string {
+  const trimmed = raw.trim();
+  try {
+    const url = new URL(trimmed);
+    const qrParam = url.searchParams.get('qr');
+    if (qrParam) {
+      console.log('[QR ID] Extracted from URL param:', qrParam.toUpperCase());
+      return qrParam.trim().toUpperCase();
+    }
+  } catch {
+    // Not a URL — treat as bare code
+  }
+  return trimmed.replace(/\s+/g, '').toUpperCase();
+}
+
 export async function validateAndUseQR(rawCode: string): Promise<QRValidationResult> {
-  const code = rawCode.trim().replace(/\s+/g, '').toUpperCase();
+  console.log('[SCAN RECEIVED]', rawCode);
+
+  const code = extractCode(rawCode);
+  console.log('[QR ID]', code);
 
   // ── Golden Pass — unlimited access, no Firestore read or write ───────────
   if (GOLDEN_PASS_CODES.has(code)) {
@@ -98,68 +118,77 @@ export async function validateAndUseQR(rawCode: string): Promise<QRValidationRes
     return { ok: true, remaining: -1, unlimited: true };
   }
 
-  const ref  = doc(db, COLLECTION, code);
+  const ref = doc(db, COLLECTION, code);
 
-  console.log(`[QR] Collection : ${COLLECTION}`);
-  console.log(`[QR] Document ID: ${code}`);
+  console.log('[FIRESTORE QUERY START]', `qrCodes/${code}`);
+
+  // Wrap the entire Firestore transaction in a 5-second timeout failsafe
+  const transactionPromise = runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    console.log('[FIRESTORE QUERY SUCCESS] exists=', snap.exists());
+
+    if (!snap.exists()) {
+      console.warn(`[VALIDATION FAILED] NOT_FOUND → qrCodes/${code}`);
+      return {
+        ok:     false as const,
+        reason: 'NOT_FOUND' as const,
+        message: 'QR Invalid. Please scan a valid SKM QR code.',
+      };
+    }
+
+    const data      = snap.data();
+    const active:    boolean = data.active    ?? true;
+    const playCount: number  = data.playCount ?? 0;
+    const maxPlays:  number  = data.maxPlays  ?? 2;
+
+    console.log('[QR VALID] active:', active, '| playCount:', playCount, '| maxPlays:', maxPlays);
+
+    if (!active) {
+      console.warn('[VALIDATION FAILED] Code is inactive');
+      return {
+        ok:     false as const,
+        reason: 'INACTIVE' as const,
+        message: 'This QR code has been disabled.',
+      };
+    }
+
+    if (playCount >= maxPlays) {
+      console.warn(`[VALIDATION FAILED] Limit reached (${playCount}/${maxPlays})`);
+      return {
+        ok:     false as const,
+        reason: 'LIMIT_REACHED' as const,
+        message: 'QR Usage Limit Reached. This QR has been fully used.',
+      };
+    }
+
+    // Atomically increment playCount
+    tx.update(ref, { playCount: playCount + 1 });
+    console.log('[PLAY COUNT UPDATED]', playCount + 1, '/', maxPlays);
+
+    const remaining = maxPlays - (playCount + 1);
+    const unlimited = maxPlays >= 999999;
+    console.log('[SESSION CREATED] remaining:', unlimited ? 'unlimited' : remaining);
+
+    return { ok: true as const, remaining, unlimited: unlimited || undefined };
+  });
+
+  const timeoutPromise = new Promise<QRValidationResult>((_, reject) =>
+    setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+  );
 
   try {
-    const result = await runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-
-      if (!snap.exists()) {
-        console.warn(`[QR] Document NOT found → qrCodes/${code}`);
-        return {
-          ok:     false as const,
-          reason: 'NOT_FOUND' as const,
-          message: 'Invalid QR Code. Please scan a valid SKM QR.',
-        };
-      }
-
-      const data      = snap.data();
-      const active:    boolean = data.active    ?? true;
-      const playCount: number  = data.playCount ?? 0;
-      const maxPlays:  number  = data.maxPlays  ?? 2;
-
-      console.log(`[QR] Document found → qrCodes/${code}`);
-      console.log(`[QR] active    : ${active}`);
-      console.log(`[QR] playCount : ${playCount}`);
-      console.log(`[QR] maxPlays  : ${maxPlays}`);
-
-      if (!active) {
-        console.warn(`[QR] BLOCKED — code is inactive`);
-        return {
-          ok:     false as const,
-          reason: 'INACTIVE' as const,
-          message: 'This QR code has been disabled.',
-        };
-      }
-
-      if (playCount >= maxPlays) {
-        console.warn(`[QR] BLOCKED — limit reached (${playCount}/${maxPlays})`);
-        return {
-          ok:     false as const,
-          reason: 'LIMIT_REACHED' as const,
-          message: `QR Already Used. Maximum usage limit reached (${playCount}/${maxPlays}).`,
-        };
-      }
-
-      // Atomically increment playCount
-      tx.update(ref, { playCount: playCount + 1 });
-
-      const remaining = maxPlays - (playCount + 1);
-      console.log(`[QR] ALLOWED — playCount incremented to ${playCount + 1}/${maxPlays}, remaining: ${remaining}`);
-
-      return { ok: true as const, remaining };
-    });
-
+    const result = await Promise.race([transactionPromise, timeoutPromise]);
+    console.log('[NAVIGATE TO GAME]', result.ok ? 'GRANTED' : 'DENIED');
     return result;
   } catch (err: any) {
-    console.error('[QR] Firestore error:', err?.message ?? err);
+    const isTimeout = err?.message === 'TIMEOUT';
+    console.error(isTimeout ? '[VALIDATION TIMEOUT]' : '[VALIDATION FAILED]', err?.message ?? err);
     return {
-      ok:     false,
-      reason: 'ERROR',
-      message: 'Network error. Please check your connection and try again.',
+      ok:      false,
+      reason:  'ERROR',
+      message: isTimeout
+        ? 'Validation Timeout. Please try again.'
+        : 'Network error. Please check your connection and try again.',
     };
   }
 }
