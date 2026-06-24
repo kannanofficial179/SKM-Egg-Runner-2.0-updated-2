@@ -21,6 +21,7 @@ import {
   type ProteinLogEntry, type DailyStats, type TrackerSettings,
 } from '../services/protein/proteinTrackerService';
 import { CameraIcon, EggIcon, CheckCircleIcon, AlertIcon } from './Icons';
+import { playChickSuccess, resumeAudioContext } from '../services/audio/chickSound';
 
 type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'duplicate' | 'error';
 
@@ -111,6 +112,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
   // This ensures html5-qrcode always measures a real-sized container.
   const openCamera = useCallback(async () => {
     console.log('[PROTEIN SCANNER OPEN]');
+    resumeAudioContext(); // unlock AudioContext on this user gesture
     setPhase('opening');
     setErrorMessage('');
     processingRef.current = false;
@@ -247,6 +249,9 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       console.log('[PROTEIN ADDED] logging +', PROTEIN_PER_EGG, 'g to Firebase…');
       const { streak: streakInfo } = await logEggScan(user.uid, validation.eggCode);
       console.log('[FIREBASE UPDATED] protein_logs + daily_stats + streak written');
+
+      // Play chick chirp — only on genuine success, never on error/duplicate
+      playChickSuccess();
 
       const [ts, stg] = await Promise.all([
         getTodayStats(user.uid),
