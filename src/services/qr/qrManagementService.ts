@@ -3,6 +3,7 @@ import {
   getDocs,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   query,
   where,
@@ -280,4 +281,119 @@ export function exportCSV(codes: QRCodeRecord[]): void {
   a.download = `qr-codes-${Date.now()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ── Export Excel (TSV that Excel opens natively) ──────────────────────────────
+
+export function exportExcel(codes: QRCodeRecord[]): void {
+  const header = 'Code\tType\tBatch\tMaxPlays\tPlayCount\tActive\tURL\tCreatedAt\n';
+  const rows   = codes.map(q =>
+    `${q.code}\t${q.type}\t${q.batch}\t${q.maxPlays}\t${q.playCount}\t${q.active}\t${buildURL(q.code)}\t${q.createdAt.toISOString()}`
+  ).join('\n');
+  const blob = new Blob(['﻿' + header + rows], { type: 'text/tab-separated-values' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `qr-codes-${Date.now()}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Backup to JSON ────────────────────────────────────────────────────────────
+
+export async function exportBackupJSON(): Promise<string> {
+  const codes = await fetchAllQRCodes();
+  const date  = new Date().toISOString().slice(0, 10);
+  const json  = JSON.stringify({ exportedAt: new Date().toISOString(), count: codes.length, codes }, null, 2);
+  const blob  = new Blob([json], { type: 'application/json' });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href      = url;
+  a.download  = `backup-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  return date;
+}
+
+// ── Bulk disable / enable by type ─────────────────────────────────────────────
+
+export async function bulkSetActiveByType(type: QRCodeType, active: boolean): Promise<number> {
+  const snap = await getDocs(
+    query(collection(db, COLLECTION), where('type', '==', type))
+  );
+  if (snap.empty) return 0;
+
+  // Firestore writeBatch is limited to 500 ops — chunk if needed
+  const docs = snap.docs;
+  let count  = 0;
+  for (let i = 0; i < docs.length; i += 499) {
+    const chunk = docs.slice(i, i + 499);
+    const b = writeBatch(db);
+    chunk.forEach(d => b.update(d.ref, { active }));
+    await b.commit();
+    count += chunk.length;
+  }
+  return count;
+}
+
+// ── Bulk delete by type ───────────────────────────────────────────────────────
+
+export async function bulkDeleteByType(type: QRCodeType): Promise<number> {
+  const snap = await getDocs(
+    query(collection(db, COLLECTION), where('type', '==', type))
+  );
+  if (snap.empty) return 0;
+
+  const docs = snap.docs;
+  let count  = 0;
+  for (let i = 0; i < docs.length; i += 499) {
+    const chunk = docs.slice(i, i + 499);
+    const b = writeBatch(db);
+    chunk.forEach(d => b.delete(d.ref));
+    await b.commit();
+    count += chunk.length;
+  }
+  return count;
+}
+
+// ── Operation Log ─────────────────────────────────────────────────────────────
+
+export interface OpLog {
+  id:        string;
+  operation: string;
+  type:      string;
+  count:     number;
+  actor:     string;
+  ts:        Date;
+}
+
+export async function writeOpLog(operation: string, type: string, count: number, actor: string): Promise<void> {
+  await addDoc(collection(db, 'qrOperationLogs'), {
+    operation,
+    type,
+    count,
+    actor,
+    ts: serverTimestamp(),
+  });
+}
+
+export async function fetchOpLogs(limit = 50): Promise<OpLog[]> {
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'qrOperationLogs'), orderBy('ts', 'desc'))
+    );
+    return snap.docs.slice(0, limit).map(d => {
+      const data = d.data();
+      return {
+        id:        d.id,
+        operation: data.operation ?? '',
+        type:      data.type      ?? '',
+        count:     data.count     ?? 0,
+        actor:     data.actor     ?? 'Admin',
+        ts:        (data.ts as Timestamp)?.toDate() ?? new Date(),
+      };
+    });
+  } catch {
+    return [];
+  }
 }

@@ -1,24 +1,35 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchDashboardStats, fetchAllQRCodes } from '../../services/qr/qrManagementService';
 import type { QRDashboardStats, QRCodeRecord } from '../../types/qr/qrManagementTypes';
-import QRDashboard    from '../../components/qr-management/QRDashboard';
-import QRGenerator    from '../../components/qr-management/QRGenerator';
-import QRBulkExport   from '../../components/qr-management/QRBulkExport';
-import QRSearch       from '../../components/qr-management/QRSearch';
+import { useAuth } from '../../auth/AuthProvider';
+import QRDashboard     from '../../components/qr-management/QRDashboard';
+import QRGenerator     from '../../components/qr-management/QRGenerator';
+import QRBulkExport    from '../../components/qr-management/QRBulkExport';
+import QRSearch        from '../../components/qr-management/QRSearch';
 import GoldenQRControl from '../../components/qr-management/GoldenQRControl';
-import QRAnalytics    from '../../components/qr-management/QRAnalytics';
+import QRAnalytics     from '../../components/qr-management/QRAnalytics';
+import QRBulkControl   from '../../components/qr-management/QRBulkControl';
+import QRPrintCenter   from '../../components/qr-management/QRPrintCenter';
+import QROperationLogs from '../../components/qr-management/QROperationLogs';
 
 const RED = '#D71920';
+
+function Divider() {
+  return <div style={{ height: 1, background: 'rgba(215,25,32,0.12)' }} />;
+}
 
 interface Props {
   onBack: () => void;
 }
 
 export default function QRManagementPage({ onBack }: Props) {
-  const [stats,       setStats]       = useState<QRDashboardStats>({ totalGenerated: 0, activeQR: 0, disabledQR: 0, goldenQR: 0, scannedToday: 0, unusedQR: 0 });
-  const [codes,       setCodes]       = useState<QRCodeRecord[]>([]);
+  const { user } = useAuth();
+  const actor = user?.email ?? user?.displayName ?? 'Admin';
+
+  const [stats,        setStats]        = useState<QRDashboardStats>({ totalGenerated: 0, activeQR: 0, disabledQR: 0, goldenQR: 0, scannedToday: 0, unusedQR: 0 });
+  const [codes,        setCodes]        = useState<QRCodeRecord[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
-  const [refreshKey,  setRefreshKey]  = useState(0);
+  const [refreshKey,   setRefreshKey]   = useState(0);
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
 
@@ -48,17 +59,15 @@ export default function QRManagementPage({ onBack }: Props) {
         `,
       }} />
 
-      {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
+      {/* ── Top Bar ── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 10,
         background: 'rgba(10,10,10,0.92)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(215,25,32,0.15)',
         padding: '14px 20px',
         display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0,
       }}>
-        {/* Back button */}
         <button
           onClick={onBack}
           style={{
@@ -67,42 +76,30 @@ export default function QRManagementPage({ onBack }: Props) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', flexShrink: 0, fontSize: 16, transition: 'all 150ms',
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
           aria-label="Back"
-        >
-          ←
-        </button>
+        >←</button>
 
-        {/* QR icon */}
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
           background: `${RED}22`, border: `1px solid ${RED}44`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-        }}>
-          ▦
-        </div>
+        }}>▦</div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: 17, fontWeight: 900, color: '#fff', margin: 0, letterSpacing: '-0.3px', lineHeight: 1.2 }}>
             QR Management
           </h1>
-          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: 0, fontWeight: 600, letterSpacing: 0.5 }}>
+          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: 0, fontWeight: 600 }}>
             Generate, Manage, Track and Secure QR Codes
           </p>
         </div>
 
-        {/* Admin badge */}
         <span style={{
           fontSize: 9, fontWeight: 900, letterSpacing: 1.5, textTransform: 'uppercase',
           padding: '4px 10px', borderRadius: 20,
-          background: `${RED}22`, border: `1px solid ${RED}55`, color: RED,
-          flexShrink: 0,
-        }}>
-          Admin
-        </span>
+          background: `${RED}22`, border: `1px solid ${RED}55`, color: RED, flexShrink: 0,
+        }}>Admin</span>
 
-        {/* Refresh button */}
         <button
           onClick={refresh}
           disabled={loadingStats}
@@ -112,16 +109,13 @@ export default function QRManagementPage({ onBack }: Props) {
             borderRadius: 10, width: 36, height: 36,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: loadingStats ? 'not-allowed' : 'pointer', fontSize: 15,
-            transition: 'all 150ms',
             animation: loadingStats ? 'spin 1s linear infinite' : 'none',
           }}
           aria-label="Refresh"
-        >
-          ↻
-        </button>
+        >↻</button>
       </div>
 
-      {/* ── Page Content ─────────────────────────────────────────────────────── */}
+      {/* ── Page Content ── */}
       <div style={{
         position: 'relative', zIndex: 1,
         flex: 1, padding: '24px 20px 40px',
@@ -131,42 +125,42 @@ export default function QRManagementPage({ onBack }: Props) {
 
         {/* 1. Dashboard */}
         <QRDashboard stats={stats} loading={loadingStats} />
-
-        {/* Divider */}
-        <div style={{ height: 1, background: 'rgba(215,25,32,0.12)' }} />
+        <Divider />
 
         {/* 2. QR Generator */}
         <QRGenerator onGenerated={refresh} />
+        <Divider />
 
-        {/* Divider */}
-        <div style={{ height: 1, background: 'rgba(215,25,32,0.12)' }} />
+        {/* 3. Export Center */}
+        <QRBulkExport codes={codes} actor={actor} />
+        <Divider />
 
-        {/* 3. Bulk Export */}
-        <QRBulkExport codes={codes} />
+        {/* 4. PDF Print Center */}
+        <QRPrintCenter codes={codes} actor={actor} />
+        <Divider />
 
-        {/* Divider */}
-        <div style={{ height: 1, background: 'rgba(215,25,32,0.12)' }} />
-
-        {/* 4. QR Search */}
+        {/* 5. QR Search */}
         <QRSearch />
+        <Divider />
 
-        {/* Divider */}
-        <div style={{ height: 1, background: 'rgba(215,25,32,0.12)' }} />
-
-        {/* 5. Golden QR */}
+        {/* 6. Golden QR */}
         <GoldenQRControl onRefresh={refresh} />
+        <Divider />
 
-        {/* Divider */}
-        <div style={{ height: 1, background: 'rgba(215,25,32,0.12)' }} />
+        {/* 7. Bulk Control Center */}
+        <QRBulkControl onRefresh={refresh} actor={actor} />
+        <Divider />
 
-        {/* 6. Analytics */}
+        {/* 8. Analytics */}
         <QRAnalytics />
+        <Divider />
+
+        {/* 9. Operation Logs */}
+        <QROperationLogs refreshKey={refreshKey} />
 
       </div>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
