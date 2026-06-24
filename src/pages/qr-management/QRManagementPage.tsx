@@ -29,15 +29,21 @@ export default function QRManagementPage({ onBack }: Props) {
   const [stats,        setStats]        = useState<QRDashboardStats>({ totalGenerated: 0, activeQR: 0, disabledQR: 0, goldenQR: 0, scannedToday: 0, unusedQR: 0 });
   const [codes,        setCodes]        = useState<QRCodeRecord[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError,   setStatsError]   = useState<string | null>(null);
   const [refreshKey,   setRefreshKey]   = useState(0);
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
 
   useEffect(() => {
     setLoadingStats(true);
+    setStatsError(null);
     Promise.all([fetchDashboardStats(), fetchAllQRCodes()])
       .then(([s, c]) => { setStats(s); setCodes(c); })
-      .catch(() => {})
+      .catch((err: any) => {
+        const msg = err?.message ?? String(err);
+        console.error('[LOAD FAILURE]', msg);
+        setStatsError(msg);
+      })
       .finally(() => setLoadingStats(false));
   }, [refreshKey]);
 
@@ -124,7 +130,7 @@ export default function QRManagementPage({ onBack }: Props) {
       }}>
 
         {/* 1. Dashboard */}
-        <QRDashboard stats={stats} loading={loadingStats} />
+        <QRDashboard stats={stats} loading={loadingStats} error={statsError} />
         <Divider />
 
         {/* 2. QR Generator */}

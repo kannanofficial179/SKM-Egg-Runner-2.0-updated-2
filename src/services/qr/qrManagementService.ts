@@ -43,15 +43,31 @@ function todayStr(): string {
 
 // ── Dashboard Stats ────────────────────────────────────────────────────────────
 
+export type DashboardResult =
+  | { ok: true;  stats: QRDashboardStats }
+  | { ok: false; error: string; stats: QRDashboardStats };
+
+const EMPTY_STATS: QRDashboardStats = { totalGenerated: 0, activeQR: 0, disabledQR: 0, goldenQR: 0, scannedToday: 0, unusedQR: 0 };
+
 export async function fetchDashboardStats(): Promise<QRDashboardStats> {
-  const snap = await getDocs(collection(db, COLLECTION));
+  console.log('[LOAD DASHBOARD] Fetching from collection:', COLLECTION);
+
+  let snap;
+  try {
+    snap = await getDocs(collection(db, COLLECTION));
+  } catch (err: any) {
+    console.error('[LOAD FAILURE] Could not read collection:', COLLECTION, err?.message);
+    throw err;
+  }
+
+  console.log('[LOAD TOTAL QR] Document count:', snap.size);
 
   let totalGenerated = 0;
-  let activeQR = 0;
-  let disabledQR = 0;
-  let goldenQR = 0;
-  let scannedToday = 0;
-  let unusedQR = 0;
+  let activeQR       = 0;
+  let disabledQR     = 0;
+  let goldenQR       = 0;
+  let scannedToday   = 0;
+  let unusedQR       = 0;
 
   const today = todayStr();
 
@@ -59,27 +75,34 @@ export async function fetchDashboardStats(): Promise<QRDashboardStats> {
     const data = d.data();
     totalGenerated++;
 
-    const isActive: boolean = data.active ?? true;
-    const playCount: number = data.playCount ?? 0;
-    const maxPlays: number  = data.maxPlays  ?? 2;
-    const type: string      = data.type ?? 'Regular';
+    const isActive:   boolean = data.active    ?? true;
+    const playCount:  number  = data.playCount ?? 0;
+    const maxPlays:   number  = data.maxPlays  ?? 2;
+    // Normalise type to lower-case for comparison — docs may store "Regular", "regular", "REGULAR"
+    const typeRaw:    string  = data.type ?? '';
+    const typeLower:  string  = typeRaw.toLowerCase();
 
     if (!isActive) {
       disabledQR++;
     } else if (playCount >= maxPlays) {
-      // exhausted but active field still true
       disabledQR++;
     } else {
       activeQR++;
     }
 
-    if (type === 'Golden') goldenQR++;
-    if (playCount === 0) unusedQR++;
+    if (typeLower === 'golden') goldenQR++;
+    if (playCount === 0)        unusedQR++;
 
-    // scansToday stored as a map { [date]: count }
+    // scansToday: stored as dailyScans map { [YYYY-MM-DD]: count }
     const dailyMap: Record<string, number> = data.dailyScans ?? {};
     scannedToday += dailyMap[today] ?? 0;
   });
+
+  console.log('[LOAD ACTIVE QR]',    activeQR);
+  console.log('[LOAD DISABLED QR]',  disabledQR);
+  console.log('[LOAD GOLDEN QR]',    goldenQR);
+  console.log('[LOAD SCANNED TODAY]',scannedToday);
+  console.log('[LOAD SUCCESS] total:', totalGenerated, '| unused:', unusedQR);
 
   return { totalGenerated, activeQR, disabledQR, goldenQR, scannedToday, unusedQR };
 }
@@ -184,18 +207,27 @@ export async function setQRActive(code: string, active: boolean): Promise<void> 
 // ── Golden QR Bulk Control ────────────────────────────────────────────────────
 
 export async function controlGoldenQR(action: 'pause' | 'resume' | 'disable'): Promise<void> {
-  const snap = await getDocs(
-    query(collection(db, COLLECTION), where('type', '==', 'Golden'))
-  );
+  console.log('[GOLDEN CONTROL]', action);
 
-  const batch = writeBatch(db);
-  snap.forEach(d => {
-    if (action === 'pause')   batch.update(d.ref, { active: false });
-    if (action === 'resume')  batch.update(d.ref, { active: true  });
-    if (action === 'disable') batch.update(d.ref, { active: false, playCount: d.data().maxPlays ?? 999 });
-  });
+  // Fetch all and filter client-side — type field may be any case
+  const snap = await getDocs(collection(db, COLLECTION));
+  const golden = snap.docs.filter(d => (d.data().type ?? '').toLowerCase() === 'golden');
 
-  await batch.commit();
+  console.log('[GOLDEN CONTROL] matching docs:', golden.length);
+  if (!golden.length) return;
+
+  for (let i = 0; i < golden.length; i += 499) {
+    const chunk = golden.slice(i, i + 499);
+    const b = writeBatch(db);
+    chunk.forEach(d => {
+      if (action === 'pause')   b.update(d.ref, { active: false });
+      if (action === 'resume')  b.update(d.ref, { active: true  });
+      if (action === 'disable') b.update(d.ref, { active: false, playCount: d.data().maxPlays ?? 999 });
+    });
+    await b.commit();
+  }
+
+  console.log('[GOLDEN CONTROL COMPLETE]', action, golden.length, 'docs');
 }
 
 // ── Create Unlimited Golden QR ────────────────────────────────────────────────
@@ -316,43 +348,73 @@ export async function exportBackupJSON(): Promise<string> {
 }
 
 // ── Bulk disable / enable by type ─────────────────────────────────────────────
+// Firestore 'type' field may be stored in any case (Regular/regular/REGULAR).
+// We fetch all docs and filter client-side for reliability.
 
 export async function bulkSetActiveByType(type: QRCodeType, active: boolean): Promise<number> {
-  const snap = await getDocs(
-    query(collection(db, COLLECTION), where('type', '==', type))
-  );
-  if (snap.empty) return 0;
+  const op = active ? 'ENABLE' : 'DISABLE';
+  console.log(`[${op} START] type="${type}" active=${active}`);
 
-  // Firestore writeBatch is limited to 500 ops — chunk if needed
-  const docs = snap.docs;
-  let count  = 0;
-  for (let i = 0; i < docs.length; i += 499) {
-    const chunk = docs.slice(i, i + 499);
+  const snap = await getDocs(collection(db, COLLECTION));
+  console.log(`[${op}] Total docs in collection:`, snap.size);
+
+  const typeLower = type.toLowerCase();
+  const matching  = snap.docs.filter(d => {
+    const t = (d.data().type ?? '').toLowerCase();
+    return t === typeLower;
+  });
+
+  console.log(`[${op}] Matching docs for type "${type}":`, matching.length);
+  if (!matching.length) return 0;
+
+  let count = 0;
+  for (let i = 0; i < matching.length; i += 499) {
+    const chunk = matching.slice(i, i + 499);
     const b = writeBatch(db);
-    chunk.forEach(d => b.update(d.ref, { active }));
+    chunk.forEach(d => {
+      console.log(`[DOC FOUND]`, d.id);
+      b.update(d.ref, { active });
+    });
     await b.commit();
     count += chunk.length;
+    console.log(`[DOC UPDATED] batch of ${chunk.length} committed`);
   }
+
+  console.log(`[${op} COMPLETE] ${count} documents updated`);
   return count;
 }
 
 // ── Bulk delete by type ───────────────────────────────────────────────────────
 
 export async function bulkDeleteByType(type: QRCodeType): Promise<number> {
-  const snap = await getDocs(
-    query(collection(db, COLLECTION), where('type', '==', type))
-  );
-  if (snap.empty) return 0;
+  console.log('[DELETE START] type:', type);
 
-  const docs = snap.docs;
-  let count  = 0;
-  for (let i = 0; i < docs.length; i += 499) {
-    const chunk = docs.slice(i, i + 499);
+  const snap = await getDocs(collection(db, COLLECTION));
+  console.log('[DELETE] Total docs in collection:', snap.size);
+
+  const typeLower = type.toLowerCase();
+  const matching  = snap.docs.filter(d => {
+    const t = (d.data().type ?? '').toLowerCase();
+    return t === typeLower;
+  });
+
+  console.log('[DELETE] Matching docs:', matching.length);
+  if (!matching.length) return 0;
+
+  let count = 0;
+  for (let i = 0; i < matching.length; i += 499) {
+    const chunk = matching.slice(i, i + 499);
     const b = writeBatch(db);
-    chunk.forEach(d => b.delete(d.ref));
+    chunk.forEach(d => {
+      console.log('[DOC FOUND]', d.id);
+      b.delete(d.ref);
+    });
     await b.commit();
     count += chunk.length;
+    console.log('[DOC UPDATED] deleted batch of', chunk.length);
   }
+
+  console.log('[DELETE COMPLETE]', count, 'documents deleted');
   return count;
 }
 

@@ -86,11 +86,24 @@ service cloud.firestore {
 
     match /qrCodes/{code} {
       allow read:   if isAuth();
+      // Game scan: any authenticated user can increment playCount by exactly 1
       allow update: if isAuth()
+                    && !isDeveloper()
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['playCount'])
                     && request.resource.data.playCount == resource.data.playCount + 1
                     && request.resource.data.playCount <= resource.data.maxPlays;
+      // Developer: full update access (bulk disable / enable / admin ops)
+      allow update: if isDeveloper();
       allow create: if isAuth();
+      // Only developers can delete QR codes
+      allow delete: if isDeveloper();
+    }
+
+    // Admin operation log — developer read/write only
+    match /qrOperationLogs/{logId} {
+      allow read:   if isDeveloper();
+      allow create: if isDeveloper();
+      allow update: if false;
       allow delete: if false;
     }
 
