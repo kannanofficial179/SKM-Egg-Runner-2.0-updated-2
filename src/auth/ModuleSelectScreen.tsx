@@ -569,56 +569,52 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSe
 
   return (
     <>
-      {/* ── Page shell — premium white SKM brand ── */}
+      {/* ── Page shell ── */}
       <div
         style={{
           position: 'fixed', inset: 0,
-          background: '#F8F9FB',
+          background: '#0D0D0D',
           opacity: visible ? 1 : 0,
           transition: 'opacity 300ms ease',
           display: 'flex', flexDirection: 'column',
           fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-          overflow: 'hidden',
+          overflowY: 'auto',
         }}
         onClick={handleSecretTap}
       >
-        {/* Subtle top red accent line */}
-        <div style={{ height: 4, background: 'linear-gradient(90deg,#D71920,#B51218)', flexShrink: 0 }} />
-
-        {/* ── Header — centered, premium ── */}
+        {/* ── Subtle background grid texture ── */}
         <div style={{
-          flexShrink: 0,
-          paddingTop: 20, paddingBottom: 12,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+          backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(215,25,32,0.12) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(215,25,32,0.08) 0%, transparent 50%)',
+        }} />
+
+        {/* ── Header ── */}
+        <div style={{
+          position: 'relative', zIndex: 1, flexShrink: 0,
+          padding: '36px 24px 20px',
+          display: 'flex', alignItems: 'center', gap: 12,
         }}>
           <img
             src="/THUMBS_POSE__Egg_-removebg-preview.png"
             alt="SKM"
-            style={{ width: 44, height: 44, objectFit: 'contain' }}
+            style={{ width: 38, height: 38, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(215,25,32,0.5))', flexShrink: 0 }}
           />
-          <p style={{
-            fontSize: 9, fontWeight: 900, letterSpacing: 3, textTransform: 'uppercase',
-            color: '#D71920', margin: 0,
-          }}>
-            SKM EXPERIENCE
-          </p>
-          <h1 style={{
-            fontSize: 20, fontWeight: 900, color: '#1A1A1A',
-            margin: 0, letterSpacing: '-0.4px', lineHeight: 1.2,
-          }}>
-            Choose Your Module
-          </h1>
-          <p style={{ fontSize: 11, color: '#888', margin: 0, fontWeight: 500 }}>
-            Select your experience and continue
-          </p>
+          <div>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase', color: 'rgba(215,25,32,0.8)', margin: 0, fontFamily: 'monospace' }}>
+              SKM EXPERIENCE
+            </p>
+            <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
+              Choose Your <span style={{ color: '#D71920' }}>Mode</span>
+            </h1>
+          </div>
         </div>
 
         {/* ── Cards ── */}
         <div style={{
-          flex: 1,
-          padding: '8px 16px 8px',
-          display: 'flex', flexDirection: 'column', gap: 10,
-          maxWidth: 480, width: '100%', margin: '0 auto', alignSelf: 'center',
+          position: 'relative', zIndex: 1,
+          flex: 1, padding: '0 16px 0',
+          display: 'flex', flexDirection: 'column', gap: 12,
+          maxWidth: 500, width: '100%', margin: '0 auto', alignSelf: 'center',
           boxSizing: 'border-box', justifyContent: 'center',
         }}>
 
@@ -629,65 +625,54 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSe
             onPointerUp={() => setPressing(null)}
             onPointerLeave={() => setPressing(null)}
             style={{
-              border: '2px solid #D71920',
-              cursor: 'pointer', padding: 0, textAlign: 'left',
-              borderRadius: 20, overflow: 'hidden', position: 'relative',
-              background: '#fff',
-              transform: pressing === 'tracker' ? 'scale(0.975)' : 'scale(1)',
-              transition: 'transform 150ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 150ms ease',
+              border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left',
+              borderRadius: 22, overflow: 'hidden', position: 'relative',
+              transform: pressing === 'tracker' ? 'scale(0.97)' : 'scale(1)',
+              transition: 'transform 160ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 160ms ease',
               boxShadow: pressing === 'tracker'
-                ? '0 2px 8px rgba(215,25,32,0.12)'
-                : '0 4px 20px rgba(215,25,32,0.13), 0 1px 4px rgba(0,0,0,0.06)',
+                ? '0 4px 14px rgba(215,25,32,0.2)'
+                : '0 8px 28px rgba(215,25,32,0.4), 0 0 0 1px rgba(215,25,32,0.2)',
+              background: 'transparent',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 118 }}>
+            <div style={{
+              position: 'relative',
+              background: 'linear-gradient(135deg,#C0101A 0%,#7A0009 100%)',
+              height: 150,
+              display: 'flex', alignItems: 'center',
+            }}>
+              {/* Orb */}
+              <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+              {/* Glass highlight */}
+              <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 22, background: 'linear-gradient(135deg,rgba(255,255,255,0.13) 0%,transparent 55%)' }} />
 
-              {/* Left — content */}
-              <div style={{ flex: 1, padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', zIndex: 1 }}>
-                <div>
-                  <span style={{
-                    display: 'inline-block', fontSize: 8, fontWeight: 900, letterSpacing: 2,
-                    textTransform: 'uppercase', color: '#fff',
-                    background: '#D71920', padding: '3px 9px',
-                    borderRadius: 20, marginBottom: 8,
-                  }}>
-                    Health
-                  </span>
-                  <h2 style={{ fontSize: 17, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px', lineHeight: 1.15 }}>
-                    Protein Tracker
-                  </h2>
-                  <p style={{ fontSize: 11, color: '#666', margin: '0 0 8px', fontWeight: 500, lineHeight: 1.5 }}>
-                    Track daily protein intake and build healthy habits.
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 8px' }}>
-                    {['Track Protein', 'Daily Goals', 'Smart Insights', 'Build Habits'].map(f => (
-                      <span key={f} style={{ fontSize: 9, color: '#D71920', fontWeight: 700 }}>• {f}</span>
-                    ))}
-                  </div>
-                </div>
-                <div style={{
-                  marginTop: 12,
-                  background: 'linear-gradient(135deg,#D71920,#B51218)',
-                  color: '#fff', borderRadius: 10, padding: '8px 0',
-                  fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: 0.5,
+              {/* Mascot */}
+              <img
+                src="/egg mus_Image_v5vrg3v5vrg3v5vr-removebg-preview.png"
+                alt=""
+                style={{
+                  position: 'absolute', right: -4, bottom: 0,
+                  width: 148, height: 148, objectFit: 'contain',
+                  filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.35))',
+                }}
+              />
+
+              {/* Text */}
+              <div style={{ padding: '20px 20px', position: 'relative', zIndex: 1 }}>
+                <span style={{
+                  display: 'inline-block', fontSize: 8, fontWeight: 900, letterSpacing: 2,
+                  textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)',
+                  background: 'rgba(255,255,255,0.14)', padding: '3px 10px',
+                  borderRadius: 20, border: '1px solid rgba(255,255,255,0.18)', marginBottom: 10,
                 }}>
-                  OPEN PROTEIN TRACKER
-                </div>
-              </div>
-
-              {/* Right — mascot */}
-              <div style={{
-                width: 110, flexShrink: 0, position: 'relative', overflow: 'hidden',
-                background: 'linear-gradient(160deg,#fff5f5 0%,#ffe4e4 100%)',
-              }}>
-                <img
-                  src="/egg mus_Image_v5vrg3v5vrg3v5vr-removebg-preview.png"
-                  alt=""
-                  style={{
-                    position: 'absolute', bottom: -4, right: -8,
-                    width: 118, height: 118, objectFit: 'contain',
-                  }}
-                />
+                  Health 
+                </span>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 5px', letterSpacing: '-0.3px', lineHeight: 1.1 }}>
+                  Protein Tracker
+                </h2>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', margin: 0, fontWeight: 500, lineHeight: 1.45, maxWidth: 180 }}>
+                  Track daily protein intake and build healthy habits.
+                </p>
               </div>
             </div>
           </button>
@@ -699,65 +684,56 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSe
             onPointerUp={() => setPressing(null)}
             onPointerLeave={() => setPressing(null)}
             style={{
-              border: '2px solid #D71920',
-              cursor: 'pointer', padding: 0, textAlign: 'left',
-              borderRadius: 20, overflow: 'hidden', position: 'relative',
-              background: '#fff',
-              transform: pressing === 'game' ? 'scale(0.975)' : 'scale(1)',
-              transition: 'transform 150ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 150ms ease',
+              border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left',
+              borderRadius: 22, overflow: 'hidden', position: 'relative',
+              transform: pressing === 'game' ? 'scale(0.97)' : 'scale(1)',
+              transition: 'transform 160ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 160ms ease',
               boxShadow: pressing === 'game'
-                ? '0 2px 8px rgba(215,25,32,0.12)'
-                : '0 4px 20px rgba(215,25,32,0.13), 0 1px 4px rgba(0,0,0,0.06)',
+                ? '0 4px 14px rgba(0,0,0,0.25)'
+                : '0 8px 28px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)',
+              background: 'transparent',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 118 }}>
+            <div style={{
+              position: 'relative',
+              background: 'linear-gradient(135deg,#1A1A1A 0%,#0A0A0A 100%)',
+              height: 150,
+              display: 'flex', alignItems: 'center',
+            }}>
+              {/* Red glow behind mascot */}
+              <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', width: 120, height: 120, borderRadius: '50%', background: 'rgba(215,25,32,0.18)', filter: 'blur(22px)', pointerEvents: 'none' }} />
+              {/* Red corner accent */}
+              <div style={{ position: 'absolute', top: 0, right: 0, width: 70, height: 70, background: 'linear-gradient(225deg,rgba(215,25,32,0.3) 0%,transparent 70%)', borderTopRightRadius: 22, pointerEvents: 'none' }} />
+              {/* Glass highlight */}
+              <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 22, background: 'linear-gradient(135deg,rgba(255,255,255,0.05) 0%,transparent 50%)' }} />
 
-              {/* Left — content */}
-              <div style={{ flex: 1, padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', zIndex: 1 }}>
-                <div>
-                  <span style={{
-                    display: 'inline-block', fontSize: 8, fontWeight: 900, letterSpacing: 2,
-                    textTransform: 'uppercase', color: '#fff',
-                    background: '#D71920', padding: '3px 9px',
-                    borderRadius: 20, marginBottom: 8,
-                  }}>
-                    Game
-                  </span>
-                  <h2 style={{ fontSize: 17, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px', lineHeight: 1.15 }}>
-                    SKM Egg Runner
-                  </h2>
-                  <p style={{ fontSize: 11, color: '#666', margin: '0 0 8px', fontWeight: 500, lineHeight: 1.5 }}>
-                    Evolve from Egg to Champion.
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 8px' }}>
-                    {['Collect Eggs', 'Earn Rewards', 'Unlock Characters', 'Compete'].map(f => (
-                      <span key={f} style={{ fontSize: 9, color: '#D71920', fontWeight: 700 }}>• {f}</span>
-                    ))}
-                  </div>
-                </div>
-                <div style={{
-                  marginTop: 12,
-                  background: 'linear-gradient(135deg,#D71920,#B51218)',
-                  color: '#fff', borderRadius: 10, padding: '8px 0',
-                  fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: 0.5,
+              {/* Mascot */}
+              <img
+                src="/egg play_Image_o17lyuo17lyuo17l-removebg-preview.png"
+                alt=""
+                style={{
+                  position: 'absolute', right: 4, bottom: 0,
+                  width: 138, height: 138, objectFit: 'contain',
+                  filter: 'drop-shadow(0 4px 18px rgba(215,25,32,0.7)) drop-shadow(0 0 6px rgba(215,25,32,0.4))',
+                }}
+              />
+
+              {/* Text */}
+              <div style={{ padding: '20px 20px', position: 'relative', zIndex: 1 }}>
+                <span style={{
+                  display: 'inline-block', fontSize: 8, fontWeight: 900, letterSpacing: 2,
+                  textTransform: 'uppercase', color: 'rgba(215,25,32,0.9)',
+                  background: 'rgba(215,25,32,0.14)', padding: '3px 10px',
+                  borderRadius: 20, border: '1px solid rgba(215,25,32,0.3)', marginBottom: 10,
                 }}>
-                  PLAY SKM EGG RUNNER
-                </div>
-              </div>
-
-              {/* Right — mascot */}
-              <div style={{
-                width: 110, flexShrink: 0, position: 'relative', overflow: 'hidden',
-                background: 'linear-gradient(160deg,#fff5f5 0%,#ffe4e4 100%)',
-              }}>
-                <img
-                  src="/egg play_Image_o17lyuo17lyuo17l-removebg-preview.png"
-                  alt=""
-                  style={{
-                    position: 'absolute', bottom: -4, right: -8,
-                    width: 118, height: 118, objectFit: 'contain',
-                  }}
-                />
+                  Game 
+                </span>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 5px', letterSpacing: '-0.3px', lineHeight: 1.1 }}>
+                  SKM Egg Runner
+                </h2>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', margin: 0, fontWeight: 500, lineHeight: 1.45, maxWidth: 180 }}>
+                  Evolve from Egg to Champion.
+                </p>
               </div>
             </div>
           </button>
@@ -766,8 +742,9 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSe
 
         {/* Footer */}
         <p style={{
-          textAlign: 'center', fontSize: 9, color: '#C8C8C8',
-          padding: '10px 0 14px', margin: 0, letterSpacing: 1.5, textTransform: 'uppercase', flexShrink: 0,
+          position: 'relative', zIndex: 1,
+          textAlign: 'center', fontSize: 9, color: 'rgba(255,255,255,0.18)',
+          padding: '16px 0 20px', margin: 0, fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase',
         }}>
           SKM © 2024 · All Rights Reserved
         </p>
