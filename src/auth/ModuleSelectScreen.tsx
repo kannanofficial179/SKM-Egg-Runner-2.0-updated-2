@@ -270,9 +270,13 @@ function QRAccessModal({
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(QR_ELEMENT_ID);
       }
+      // qrbox sized to 80vw clamped between 280–350px for mobile reliability
+      const vw = Math.min(window.innerWidth, window.innerHeight);
+      const boxSize = Math.min(350, Math.max(280, Math.round(vw * 0.80)));
+
       await scannerRef.current.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
+        { fps: 15, qrbox: { width: boxSize, height: boxSize } },
         async (decoded) => {
           if (handledRef.current) return;
           handledRef.current = true;
@@ -349,139 +353,159 @@ function QRAccessModal({
 
   return ReactDOM.createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto"
-      style={overlayStyle}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9000,
+        display: 'flex', flexDirection: 'column',
+        background: '#000',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 250ms ease',
+        pointerEvents: 'auto',
+      }}
     >
-      {/* Blurred backdrop */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          background: 'rgba(0,0,0,0.55)',
-        }}
-        onClick={() => closeWith()}
-      />
-
-      {/* Modal card — SKM Red + White */}
-      <div
-        className="relative z-10 w-full mx-4 rounded-3xl overflow-hidden shadow-2xl"
-        style={{
-          ...cardStyle,
-          maxWidth: 360,
-          background: 'linear-gradient(160deg,#D71920 0%,#A50F15 100%)',
-          boxShadow: '0 0 0 1px rgba(255,255,255,0.12), 0 32px 64px rgba(0,0,0,0.65)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Glassmorphism highlight */}
-        <div
-          className="absolute inset-0 pointer-events-none rounded-3xl"
+      {/* ── Top bar ── */}
+      <div style={{
+        flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 18px',
+        background: 'linear-gradient(180deg,rgba(0,0,0,0.85) 0%,transparent 100%)',
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+      }}>
+        <div>
+          <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: 3, textTransform: 'uppercase', color: 'rgba(215,25,32,0.9)', margin: 0, fontFamily: 'monospace' }}>
+            GAME ACCESS
+          </p>
+          <h2 style={{ fontSize: 17, fontWeight: 900, color: '#fff', margin: 0, lineHeight: 1.2 }}>
+            Scan QR Code
+          </h2>
+        </div>
+        <button
+          onClick={() => closeWith()}
           style={{
-            background: 'linear-gradient(135deg,rgba(255,255,255,0.18) 0%,rgba(255,255,255,0.04) 55%,transparent 100%)',
+            width: 38, height: 38, borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)',
+            background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}
-        />
+          aria-label="Cancel"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
 
-        <div className="relative p-5 flex flex-col gap-4">
+      {/* ── Camera fill ── */}
+      <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
 
-          {/* Header row */}
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] font-black tracking-widest text-white/60 uppercase font-mono leading-none">
-                GAME ACCESS
-              </p>
-              <h2 className="text-lg font-black text-white tracking-tight leading-tight mt-1">
-                Scan QR Code
-              </h2>
-              <p className="text-xs text-white/60 font-medium mt-0.5">
-                Choose how you want to continue
-              </p>
-            </div>
-            {/* X close */}
-            <button
-              onClick={() => closeWith()}
-              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer flex-shrink-0 ml-2"
-              style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.2)' }}
-              aria-label="Cancel"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+        {/* html5-qrcode mount — fills entire area */}
+        <div id={QR_ELEMENT_ID} style={{ position: 'absolute', inset: 0 }} />
+
+        {/* Scan frame overlay — large, centered */}
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {/* Dark vignette strips */}
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom,rgba(0,0,0,0.55) 0%,transparent 20%,transparent 80%,rgba(0,0,0,0.55) 100%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right,rgba(0,0,0,0.4) 0%,transparent 15%,transparent 85%,rgba(0,0,0,0.4) 100%)' }} />
+
+          {/* Scan frame box */}
+          <div style={{
+            position: 'relative',
+            width: 'min(80vw, 350px)', height: 'min(80vw, 350px)',
+            minWidth: 280, minHeight: 280,
+          }}>
+            {/* White corner brackets */}
+            {[
+              { top: 0,    left: 0,  borderTop: '4px solid #fff', borderLeft: '4px solid #fff',   borderRadius: '14px 0 0 0' },
+              { top: 0,    right: 0, borderTop: '4px solid #fff', borderRight: '4px solid #fff',  borderRadius: '0 14px 0 0' },
+              { bottom: 0, left: 0,  borderBottom: '4px solid #fff', borderLeft: '4px solid #fff',  borderRadius: '0 0 0 14px' },
+              { bottom: 0, right: 0, borderBottom: '4px solid #fff', borderRight: '4px solid #fff', borderRadius: '0 0 14px 0' },
+            ].map((s, i) => (
+              <div key={i} style={{ position: 'absolute', width: 52, height: 52, ...s }} />
+            ))}
+            {/* Red inner accent corners */}
+            {[
+              { top: 0,    left: 0,  borderTop: '3px solid #D71920', borderLeft: '3px solid #D71920',   borderRadius: '14px 0 0 0' },
+              { top: 0,    right: 0, borderTop: '3px solid #D71920', borderRight: '3px solid #D71920',  borderRadius: '0 14px 0 0' },
+              { bottom: 0, left: 0,  borderBottom: '3px solid #D71920', borderLeft: '3px solid #D71920',  borderRadius: '0 0 0 14px' },
+              { bottom: 0, right: 0, borderBottom: '3px solid #D71920', borderRight: '3px solid #D71920', borderRadius: '0 0 14px 0' },
+            ].map((s, i) => (
+              <div key={i} style={{ position: 'absolute', width: 28, height: 28, ...s }} />
+            ))}
+            {/* Animated red scan line */}
+            <div style={{
+              position: 'absolute', left: 8, right: 8, height: 2,
+              background: 'linear-gradient(90deg,transparent,#D71920 30%,#FF6B6B 50%,#D71920 70%,transparent)',
+              boxShadow: '0 0 10px 2px rgba(215,25,32,0.7)',
+              animation: 'gameScanLine 2s ease-in-out infinite',
+            }} />
           </div>
-
-          {/* Camera viewport */}
-          <div
-            className="relative w-full rounded-2xl overflow-hidden"
-            style={{
-              aspectRatio: '1 / 1',
-              maxHeight: '58vw',
-              background: 'rgba(0,0,0,0.55)',
-            }}
-          >
-            <div id={QR_ELEMENT_ID} className="w-full h-full" />
-
-            {/* Corner frame */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="relative w-44 h-44">
-                {(['tl','tr','bl','br'] as const).map(c => (
-                  <div
-                    key={c}
-                    className="absolute w-8 h-8"
-                    style={{
-                      borderColor: '#ffffff',
-                      ...(c === 'tl' ? { top: 0, left: 0,  borderTopWidth: 3, borderLeftWidth: 3,  borderRadius: '6px 0 0 0' } : {}),
-                      ...(c === 'tr' ? { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderRadius: '0 6px 0 0' } : {}),
-                      ...(c === 'bl' ? { bottom: 0, left: 0,  borderBottomWidth: 3, borderLeftWidth: 3,  borderRadius: '0 0 0 6px' } : {}),
-                      ...(c === 'br' ? { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderRadius: '0 0 6px 0' } : {}),
-                    }}
-                  />
-                ))}
-                {/* Animated scan line */}
-                <div
-                  className="absolute left-0 right-0 h-0.5"
-                  style={{
-                    background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.85),transparent)',
-                    animation: 'qrScanLine 2s ease-in-out infinite',
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Status text */}
-          <div className="min-h-[18px] text-center">
-            {scanError ? (
-              <p className="text-red-200 text-xs font-semibold font-mono">{scanError}</p>
-            ) : scanSuccess ? (
-              <p className="text-emerald-300 text-xs font-bold font-mono">{scanMsg}</p>
-            ) : (
-              <p className="text-white/65 text-xs font-semibold font-mono">{scanMsg}</p>
-            )}
-          </div>
-
-          {/* Cancel button */}
-          <button
-            onClick={() => closeWith()}
-            className="w-full font-black py-3.5 rounded-2xl text-sm uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer"
-            style={{
-              background: 'rgba(255,255,255,0.15)',
-              color: '#fff',
-              border: '1px solid rgba(255,255,255,0.25)',
-            }}
-          >
-            Cancel
-          </button>
-
         </div>
       </div>
 
+      {/* ── Bottom bar: status + cancel ── */}
+      <div style={{
+        flexShrink: 0, padding: '16px 20px 32px',
+        background: 'linear-gradient(0deg,rgba(0,0,0,0.92) 0%,transparent 100%)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+      }}>
+        <div style={{ minHeight: 22, textAlign: 'center' }}>
+          {scanError ? (
+            <p style={{ color: '#FF6B6B', fontSize: 13, fontWeight: 700, margin: 0 }}>{scanError}</p>
+          ) : scanSuccess ? (
+            <p style={{ color: '#4ade80', fontSize: 13, fontWeight: 800, margin: 0 }}>{scanMsg}</p>
+          ) : (
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: 600, margin: 0 }}>{scanMsg}</p>
+          )}
+        </div>
+        <button
+          onClick={() => closeWith()}
+          style={{
+            width: '100%', maxWidth: 340, padding: '14px 0', borderRadius: 16,
+            background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.2)',
+            color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: 0.5,
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+
       <style>{`
-        @keyframes qrScanLine {
-          0%   { top: 0%; }
-          50%  { top: calc(100% - 2px); }
-          100% { top: 0%; }
+        @keyframes gameScanLine {
+          0%   { top: 4px; }
+          50%  { top: calc(100% - 6px); }
+          100% { top: 4px; }
+        }
+        /* Force camera video to fill the entire background */
+        #${QR_ELEMENT_ID},
+        #${QR_ELEMENT_ID} > div {
+          width: 100% !important;
+          height: 100% !important;
+          border: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          background: #000 !important;
+        }
+        #${QR_ELEMENT_ID} video {
+          position: absolute !important;
+          inset: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          object-position: center !important;
+          display: block !important;
+          z-index: 1 !important;
+        }
+        #${QR_ELEMENT_ID} img,
+        #${QR_ELEMENT_ID} button,
+        #${QR_ELEMENT_ID} select,
+        #${QR_ELEMENT_ID} span,
+        #${QR_ELEMENT_ID} #qr-shaded-region,
+        #${QR_ELEMENT_ID} [id*="anchor"],
+        #${QR_ELEMENT_ID} [id*="header"],
+        #${QR_ELEMENT_ID} [id*="status"],
+        #${QR_ELEMENT_ID} [id*="torch"],
+        #${QR_ELEMENT_ID} [id*="dashboard"] {
+          display: none !important;
         }
       `}</style>
     </div>,

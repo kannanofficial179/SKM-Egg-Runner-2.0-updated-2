@@ -132,24 +132,55 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
     }
 
     try {
+      // Release any lingering camera tracks from a previous session
+      // before handing the camera to html5-qrcode
+      if (navigator.mediaDevices) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          console.log('[CAMERA REQUESTED]');
+          console.log('[CAMERA GRANTED]');
+          console.log('[STREAM RECEIVED]', `tracks: ${stream.getTracks().length}`);
+          stream.getTracks().forEach(t => t.stop()); // release immediately
+        } catch { /* permission check will happen inside html5-qrcode */ }
+      }
+
       const scanner = new Html5Qrcode(QR_ELEMENT_ID);
       scannerRef.current = scanner;
 
-      console.log('[CAMERA OPENED]');
+      // qrbox sized to 80vw clamped 280–350px for reliable mobile detection
+      const vw = Math.min(window.innerWidth, window.innerHeight);
+      const boxSize = Math.min(350, Math.max(280, Math.round(vw * 0.80)));
+
+      console.log('[SCANNER STARTED] boxSize:', boxSize);
       setPhase('scanning');
 
       await scanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
+        { fps: 15, qrbox: { width: boxSize, height: boxSize } },
         async (decoded) => {
-          // Strict guard — only process the first detected code
           if (processingRef.current) return;
           processingRef.current = true;
-          console.log('[QR DETECTED]', decoded.slice(0, 30));
+          console.log('[QR DETECTED]', decoded.slice(0, 60));
           await handleScan(decoded);
         },
-        () => { /* ignore scan errors (no QR in frame) */ }
+        () => { /* no QR in frame — ignore */ }
       );
+
+      // Verify video is actually streaming after start
+      setTimeout(() => {
+        const video = document.querySelector(`#${QR_ELEMENT_ID} video`) as HTMLVideoElement | null;
+        if (video) {
+          console.log('[VIDEO ATTACHED] videoWidth:', video.videoWidth, 'videoHeight:', video.videoHeight);
+          if (video.videoWidth === 0 || video.videoHeight === 0) {
+            console.warn('[VIDEO PLAYING] dimensions are 0 — stream may not have started yet');
+          } else {
+            console.log('[VIDEO PLAYING] stream active');
+          }
+        } else {
+          console.warn('[VIDEO ATTACHED] no video element found');
+        }
+      }, 1200);
+
     } catch (err: unknown) {
       const msg = (err as { message?: string }).message ?? String(err);
       console.error('[SCAN] Camera start error:', msg);
@@ -441,23 +472,23 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.35) 0%, transparent 18%, transparent 82%, rgba(0,0,0,0.35) 100%)' }} />
             </div>
 
-            {/* Scan frame — always centred, always on top */}
+            {/* Scan frame — large, centred, matches qrbox size */}
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 3 }}>
-              <div style={{ position: 'relative', width: 240, height: 240 }}>
+              <div style={{ position: 'relative', width: 'min(80vw,350px)', height: 'min(80vw,350px)', minWidth: 280, minHeight: 280 }}>
                 {/* White outer brackets */}
-                <div style={{ position: 'absolute', top: 0,    left: 0,  width: 44, height: 44, borderTop: '3.5px solid #fff', borderLeft: '3.5px solid #fff',   borderTopLeftRadius: 12 }} />
-                <div style={{ position: 'absolute', top: 0,    right: 0, width: 44, height: 44, borderTop: '3.5px solid #fff', borderRight: '3.5px solid #fff',  borderTopRightRadius: 12 }} />
-                <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 44, height: 44, borderBottom: '3.5px solid #fff', borderLeft: '3.5px solid #fff',  borderBottomLeftRadius: 12 }} />
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 44, height: 44, borderBottom: '3.5px solid #fff', borderRight: '3.5px solid #fff', borderBottomRightRadius: 12 }} />
+                <div style={{ position: 'absolute', top: 0,    left: 0,  width: 52, height: 52, borderTop: '4px solid #fff', borderLeft: '4px solid #fff',   borderTopLeftRadius: 14 }} />
+                <div style={{ position: 'absolute', top: 0,    right: 0, width: 52, height: 52, borderTop: '4px solid #fff', borderRight: '4px solid #fff',  borderTopRightRadius: 14 }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 52, height: 52, borderBottom: '4px solid #fff', borderLeft: '4px solid #fff',  borderBottomLeftRadius: 14 }} />
+                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 52, height: 52, borderBottom: '4px solid #fff', borderRight: '4px solid #fff', borderBottomRightRadius: 14 }} />
                 {/* Red inner accent corners */}
-                <div style={{ position: 'absolute', top: 0,    left: 0,  width: 22, height: 22, borderTop: '3.5px solid #D71920', borderLeft: '3.5px solid #D71920',   borderTopLeftRadius: 12 }} />
-                <div style={{ position: 'absolute', top: 0,    right: 0, width: 22, height: 22, borderTop: '3.5px solid #D71920', borderRight: '3.5px solid #D71920',  borderTopRightRadius: 12 }} />
-                <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 22, height: 22, borderBottom: '3.5px solid #D71920', borderLeft: '3.5px solid #D71920',  borderBottomLeftRadius: 12 }} />
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderBottom: '3.5px solid #D71920', borderRight: '3.5px solid #D71920', borderBottomRightRadius: 12 }} />
+                <div style={{ position: 'absolute', top: 0,    left: 0,  width: 28, height: 28, borderTop: '3px solid #D71920', borderLeft: '3px solid #D71920',   borderTopLeftRadius: 14 }} />
+                <div style={{ position: 'absolute', top: 0,    right: 0, width: 28, height: 28, borderTop: '3px solid #D71920', borderRight: '3px solid #D71920',  borderTopRightRadius: 14 }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 28, height: 28, borderBottom: '3px solid #D71920', borderLeft: '3px solid #D71920',  borderBottomLeftRadius: 14 }} />
+                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderBottom: '3px solid #D71920', borderRight: '3px solid #D71920', borderBottomRightRadius: 14 }} />
                 {/* Animated scan line */}
                 <div style={{
-                  position: 'absolute', left: 12, right: 12, height: 2,
-                  background: 'linear-gradient(90deg,transparent,#D71920,#FF6666,#D71920,transparent)',
+                  position: 'absolute', left: 10, right: 10, height: 2,
+                  background: 'linear-gradient(90deg,transparent,#D71920 30%,#FF6666 50%,#D71920 70%,transparent)',
                   boxShadow: '0 0 12px rgba(215,25,32,0.95)',
                   animation: 'scanline 2s ease-in-out infinite',
                 }} />
@@ -594,34 +625,32 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
         @keyframes scanline { 0% { top: 0%; } 50% { top: calc(100% - 2px); } 100% { top: 0%; } }
         @keyframes popIn    { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        /* ── html5-qrcode override ─────────────────────────────
-           The library injects deeply nested divs with fixed inline
-           pixel widths. We override every level so the video
-           fills our container via object-fit: cover.              */
+        /* ── html5-qrcode override ──────────────────────────────
+           CRITICAL: do NOT set position:static on descendant divs.
+           html5-qrcode uses position:relative on its inner wrapper
+           as the containing block for the video's position:absolute.
+           Overriding it to static collapses that block → black screen.
 
-        /* Root mount — already position:absolute via inline style */
+           Only target the outermost div + video directly.           */
+
         #${QR_ELEMENT_ID} {
           overflow: hidden !important;
+          background: #000 !important;
         }
 
-        /* Every descendant div — kill fixed sizes, kill borders */
-        #${QR_ELEMENT_ID} div {
+        /* Outermost injected wrapper only — kill fixed pixel size */
+        #${QR_ELEMENT_ID} > div {
           width: 100% !important;
           height: 100% !important;
           max-width: none !important;
           max-height: none !important;
-          min-width: 0 !important;
-          min-height: 0 !important;
           padding: 0 !important;
           margin: 0 !important;
           border: none !important;
-          border-radius: 0 !important;
-          background: transparent !important;
-          box-shadow: none !important;
-          position: static !important;
+          background: #000 !important;
         }
 
-        /* Video: absolute fill so it covers the entire viewport */
+        /* Video: cover the entire container */
         #${QR_ELEMENT_ID} video {
           position: absolute !important;
           inset: 0 !important;
@@ -637,7 +666,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
           z-index: 1 !important;
         }
 
-        /* Hide all non-video chrome html5-qrcode injects */
+        /* Hide non-video chrome injected by html5-qrcode */
         #${QR_ELEMENT_ID} img,
         #${QR_ELEMENT_ID} button,
         #${QR_ELEMENT_ID} select,
