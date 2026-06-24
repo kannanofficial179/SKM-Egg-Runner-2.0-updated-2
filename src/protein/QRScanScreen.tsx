@@ -240,7 +240,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       if (alreadyScanned) {
         console.warn('[DEDUP] Protein already recorded for', validation.eggCode, 'by user', user.uid);
         if (mountedRef.current) {
-          setDupCode(validation.eggCode);
           setPhase('duplicate');
         }
         return;
@@ -276,7 +275,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       // exists (rule blocks create if it conflicts). Show "already consumed".
       if (msg.includes('proteinScans') ||
           (msg.includes('permission') && msg.includes('PERMISSION_DENIED'))) {
-        setDupCode('');
         setPhase('duplicate');
         return;
       }
@@ -321,8 +319,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
   const remaining  = Math.max(0, goal - consumed);
   const eggsToGoal = Math.max(0, Math.ceil(remaining / PROTEIN_PER_EGG));
 
-  const isCameraPhase  = phase === 'opening' || phase === 'scanning';
-  const [dupCode, setDupCode] = useState('');
+  const isCameraPhase = phase === 'opening' || phase === 'scanning';
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -689,10 +686,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               <p style={{ fontSize: 13, color: '#666', margin: '0 0 6px', lineHeight: 1.6 }}>
                 Protein was already added for this egg.
               </p>
-              <p style={{ fontSize: 11, color: '#999', margin: '0 0 20px', fontFamily: 'monospace' }}>
-                {dupCode}
-              </p>
-
               <div style={{
                 background: '#FFFBEB', border: '1px solid #FDE68A',
                 borderRadius: 14, padding: '12px 16px', marginBottom: 20,
