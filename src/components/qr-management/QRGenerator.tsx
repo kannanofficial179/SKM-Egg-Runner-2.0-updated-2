@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import QRCode from 'qrcode';
 import type { QRCodeType, QRGeneratorForm } from '../../types/qr/qrManagementTypes';
 import { generateQRCodes } from '../../services/qr/qrManagementService';
 
@@ -18,32 +19,151 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'system-ui,-apple-system,sans-serif',
 };
 
+interface QRPreviewItem {
+  code: string;
+  dataUrl: string;
+}
+
+// ── Draw one QR code onto a canvas and return a PNG data URL ─────────────────
+async function renderQRtoPNG(code: string, type: QRCodeType): Promise<string> {
+  const SIZE = 300;
+  const MARGIN = 20;
+
+  console.log('[QR DATA CREATED]', code);
+
+  // 1. Generate QR matrix data URL via qrcode lib
+  const qrDataUrl: string = await QRCode.toDataURL(code, {
+    width: SIZE,
+    margin: 1,
+    color: {
+      dark:  type === 'Golden' ? '#B45309' : '#1a0000',
+      light: '#FFFFFF',
+    },
+    errorCorrectionLevel: 'H',
+  });
+  console.log('[QR SVG CREATED]', code);
+
+  // 2. Create canvas to composite QR + label
+  const canvas = document.createElement('canvas');
+  canvas.width  = SIZE + MARGIN * 2;
+  canvas.height = SIZE + MARGIN * 2 + 40; // extra space for label
+  const ctx = canvas.getContext('2d')!;
+  console.log('[QR CANVAS CREATED]', code);
+
+  // Background
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Top accent bar
+  ctx.fillStyle = type === 'Golden' ? '#B45309' : RED;
+  ctx.fillRect(0, 0, canvas.width, 6);
+
+  // Load QR image onto canvas
+  await new Promise<void>((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => { ctx.drawImage(img, MARGIN, MARGIN + 6, SIZE, SIZE); resolve(); };
+    img.onerror = reject;
+    img.src     = qrDataUrl;
+  });
+
+  // Code label below QR
+  ctx.fillStyle = '#111111';
+  ctx.font      = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(code, canvas.width / 2, SIZE + MARGIN + 6 + 22);
+
+  // Type badge
+  ctx.font      = '10px system-ui';
+  ctx.fillStyle = type === 'Golden' ? '#B45309' : RED;
+  ctx.fillText(`[${type.toUpperCase()}]`, canvas.width / 2, SIZE + MARGIN + 6 + 38);
+
+  console.log('[PNG GENERATED]', code);
+
+  const dataUrl = canvas.toDataURL('image/png');
+  console.log('[PREVIEW RENDERED]', code);
+  return dataUrl;
+}
+
+// ── Trigger browser download for one PNG ─────────────────────────────────────
+function downloadPNG(dataUrl: string, code: string): void {
+  console.log('[DOWNLOAD TRIGGERED]', code);
+  const a       = document.createElement('a');
+  a.href        = dataUrl;
+  a.download    = `${code}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  console.log('[DOWNLOAD SUCCESS]', code);
+}
+
 interface Props {
   onGenerated: () => void;
 }
 
 export default function QRGenerator({ onGenerated }: Props) {
   const [form, setForm] = useState<QRGeneratorForm>({
-    prefix: 'SKM', quantity: 10, maxPlays: 2, type: 'Regular',
+    prefix: 'SKM', quantity: 1, maxPlays: 2, type: 'Regular',
   });
-  const [loading, setLoading]   = useState(false);
-  const [result,  setResult]    = useState<string | null>(null);
-  const [error,   setError]     = useState<string | null>(null);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+  const [previews,  setPreviews]  = useState<QRPreviewItem[]>([]);
+  const [genLog,    setGenLog]    = useState<string[]>([]);
+
+  const log = (msg: string) => {
+    console.log(msg);
+    setGenLog(prev => [...prev, msg]);
+  };
 
   const handleGenerate = async () => {
-    if (!form.prefix.trim()) { setError('Prefix is required.'); return; }
-    if (form.quantity < 1 || form.quantity > 500) { setError('Quantity must be 1–500.'); return; }
-    if (form.maxPlays < 1) { setError('Max Plays must be at least 1.'); return; }
-    setLoading(true); setError(null); setResult(null);
+    if (!form.prefix.trim())                         { setError('Prefix is required.'); return; }
+    if (form.quantity < 1 || form.quantity > 500)    { setError('Quantity must be 1–500.'); return; }
+    if (form.maxPlays < 1)                           { setError('Max Plays must be at least 1.'); return; }
+
+    setLoading(true);
+    setError(null);
+    setPreviews([]);
+    setGenLog([]);
+
     try {
+      // ── Step 1: Save to Firestore ─────────────────────────────────────────
+      log(`[QR DATA CREATED] Saving ${form.quantity} codes to Firestore…`);
       const codes = await generateQRCodes(form.prefix, form.quantity, form.maxPlays, form.type);
-      setResult(`${codes.length} QR codes generated successfully.`);
+      log(`[QR DATA CREATED] ${codes.length} Firestore documents written.`);
+
+      // ── Step 2: Render each code to PNG ───────────────────────────────────
+      const rendered: QRPreviewItem[] = [];
+      for (const code of codes) {
+        try {
+          log(`[QR CANVAS CREATED] Rendering ${code}…`);
+          const dataUrl = await renderQRtoPNG(code, form.type);
+          rendered.push({ code, dataUrl });
+          log(`[PREVIEW RENDERED] ${code} ready.`);
+        } catch (renderErr: any) {
+          log(`[ERROR] Render failed for ${code}: ${renderErr?.message}`);
+        }
+      }
+
+      setPreviews(rendered);
+      log(`[PREVIEW RENDERED] All ${rendered.length} previews ready.`);
       onGenerated();
+
     } catch (e: any) {
-      setError(e?.message ?? 'Generation failed.');
+      const msg = e?.message ?? 'Generation failed.';
+      log(`[ERROR] ${msg}`);
+      setError(msg);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDownloadOne = (item: QRPreviewItem) => {
+    downloadPNG(item.dataUrl, item.code);
+  };
+
+  const handleDownloadAll = () => {
+    previews.forEach((item, i) => {
+      setTimeout(() => downloadPNG(item.dataUrl, item.code), i * 120);
+    });
   };
 
   return (
@@ -56,8 +176,10 @@ export default function QRGenerator({ onGenerated }: Props) {
         background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(215,25,32,0.18)',
         borderRadius: 18, padding: '20px',
       }}>
+
+        {/* ── Form fields ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 14, marginBottom: 16 }}>
-          {/* Prefix */}
+
           <div>
             <label style={labelStyle}>QR Prefix</label>
             <input
@@ -70,7 +192,6 @@ export default function QRGenerator({ onGenerated }: Props) {
             />
           </div>
 
-          {/* Quantity */}
           <div>
             <label style={labelStyle}>Quantity</label>
             <input
@@ -84,7 +205,6 @@ export default function QRGenerator({ onGenerated }: Props) {
             />
           </div>
 
-          {/* Max Plays */}
           <div>
             <label style={labelStyle}>Max Plays</label>
             <input
@@ -98,7 +218,6 @@ export default function QRGenerator({ onGenerated }: Props) {
             />
           </div>
 
-          {/* QR Type */}
           <div>
             <label style={labelStyle}>QR Type</label>
             <select
@@ -111,8 +230,11 @@ export default function QRGenerator({ onGenerated }: Props) {
           </div>
         </div>
 
-        {error  && <p style={{ color: '#f87171', fontSize: 12, margin: '0 0 12px', fontWeight: 600 }}>{error}</p>}
-        {result && <p style={{ color: '#4ade80', fontSize: 12, margin: '0 0 12px', fontWeight: 600 }}>{result}</p>}
+        {error && (
+          <p style={{ color: '#f87171', fontSize: 12, margin: '0 0 12px', fontWeight: 600 }}>
+            ✕ {error}
+          </p>
+        )}
 
         <button
           onClick={handleGenerate}
@@ -123,12 +245,102 @@ export default function QRGenerator({ onGenerated }: Props) {
             fontSize: 13, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase',
             cursor: loading ? 'not-allowed' : 'pointer',
             boxShadow: loading ? 'none' : '0 4px 16px rgba(215,25,32,0.4)',
-            transition: 'all 150ms',
+            transition: 'all 150ms', display: 'flex', alignItems: 'center', gap: 8,
           }}
         >
+          {loading && (
+            <span style={{
+              width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)',
+              borderTopColor: '#fff', borderRadius: '50%',
+              animation: 'qrSpin 0.7s linear infinite', display: 'inline-block',
+            }} />
+          )}
           {loading ? 'Generating…' : 'Generate QR'}
         </button>
+
+        {/* ── Debug log ── */}
+        {genLog.length > 0 && (
+          <div style={{
+            marginTop: 16, padding: '12px 14px', borderRadius: 10,
+            background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.07)',
+            fontFamily: 'monospace', fontSize: 10, color: 'rgba(255,255,255,0.5)',
+            maxHeight: 120, overflowY: 'auto',
+          }}>
+            {genLog.map((line, i) => (
+              <div key={i} style={{
+                color: line.startsWith('[ERROR]')   ? '#f87171' :
+                       line.startsWith('[PREVIEW]') ? '#4ade80' :
+                       line.startsWith('[DOWNLOAD]')? '#60a5fa' :
+                       'rgba(255,255,255,0.5)',
+              }}>
+                {line}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Preview grid ── */}
+        {previews.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            {/* Header row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>
+                ✓ {previews.length} QR code{previews.length !== 1 ? 's' : ''} ready
+              </span>
+              {previews.length > 1 && (
+                <button
+                  onClick={handleDownloadAll}
+                  style={{
+                    background: 'rgba(96,165,250,0.15)', border: '1.5px solid rgba(96,165,250,0.4)',
+                    color: '#60a5fa', borderRadius: 10, padding: '7px 16px',
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  ↓ Download All PNG
+                </button>
+              )}
+            </div>
+
+            {/* Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+              {previews.map(item => (
+                <div
+                  key={item.code}
+                  style={{
+                    background: '#fff', borderRadius: 14, overflow: 'hidden',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  }}
+                >
+                  <img
+                    src={item.dataUrl}
+                    alt={item.code}
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                  <button
+                    onClick={() => handleDownloadOne(item)}
+                    style={{
+                      width: '100%', padding: '10px 0',
+                      background: form.type === 'Golden'
+                        ? 'linear-gradient(135deg,#f59e0b,#b45309)'
+                        : `linear-gradient(135deg,${RED},#8B0000)`,
+                      color: '#fff', border: 'none',
+                      fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    ↓ Download PNG
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      <style>{`
+        @keyframes qrSpin { to { transform: rotate(360deg); } }
+      `}</style>
     </section>
   );
 }
