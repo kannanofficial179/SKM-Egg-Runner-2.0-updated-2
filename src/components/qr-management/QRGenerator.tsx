@@ -107,12 +107,8 @@ export default function QRGenerator({ onGenerated }: Props) {
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
   const [previews,  setPreviews]  = useState<QRPreviewItem[]>([]);
-  const [genLog,    setGenLog]    = useState<string[]>([]);
 
-  const log = (msg: string) => {
-    console.log(msg);
-    setGenLog(prev => [...prev, msg]);
-  };
+  const log = (msg: string) => console.log(msg);
 
   const handleGenerate = async () => {
     if (!form.prefix.trim())                         { setError('Prefix is required.'); return; }
@@ -122,7 +118,6 @@ export default function QRGenerator({ onGenerated }: Props) {
     setLoading(true);
     setError(null);
     setPreviews([]);
-    setGenLog([]);
 
     try {
       // ── Step 1: Save to Firestore ─────────────────────────────────────────
@@ -258,26 +253,6 @@ export default function QRGenerator({ onGenerated }: Props) {
           {loading ? 'Generating…' : 'Generate QR'}
         </button>
 
-        {/* ── Debug log ── */}
-        {genLog.length > 0 && (
-          <div style={{
-            marginTop: 16, padding: '12px 14px', borderRadius: 10,
-            background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.07)',
-            fontFamily: 'monospace', fontSize: 10, color: 'rgba(255,255,255,0.5)',
-            maxHeight: 120, overflowY: 'auto',
-          }}>
-            {genLog.map((line, i) => (
-              <div key={i} style={{
-                color: line.startsWith('[ERROR]')   ? '#f87171' :
-                       line.startsWith('[PREVIEW]') ? '#4ade80' :
-                       line.startsWith('[DOWNLOAD]')? '#60a5fa' :
-                       'rgba(255,255,255,0.5)',
-              }}>
-                {line}
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* ── Preview grid ── */}
         {previews.length > 0 && (
