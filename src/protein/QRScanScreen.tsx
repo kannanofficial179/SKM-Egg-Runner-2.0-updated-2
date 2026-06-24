@@ -35,7 +35,6 @@ interface ScanResult {
   todayEggs: number;
   todayProtein: number;
   goal: number;
-  eggCode: string;
 }
 
 const QR_ELEMENT_ID = 'protein-qr-reader';
@@ -262,7 +261,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
         todayEggs:    ts?.totalEggs    ?? 0,
         todayProtein: ts?.totalProtein ?? 0,
         goal:         stg.dailyGoal,
-        eggCode:      validation.eggCode,
       });
       setPhase('success');
 
@@ -611,11 +609,8 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
                 <CheckCircleIcon size={38} color="#fff" />
               </div>
               <h3 style={{ fontSize: 21, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px' }}>Egg Logged!</h3>
-              <p style={{ fontSize: 12, color: '#666', margin: '0 0 4px' }}>
+              <p style={{ fontSize: 12, color: '#666', margin: '0 0 18px' }}>
                 +{result.protein}g protein added successfully.
-              </p>
-              <p style={{ fontSize: 11, color: '#999', margin: '0 0 18px', fontFamily: 'monospace' }}>
-                {result.eggCode}
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 14 }}>
                 <RBox label="Protein Added" value={`+${result.protein}g`} color="#D71920" bg="#FCE8E8" />
