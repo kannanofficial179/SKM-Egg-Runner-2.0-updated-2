@@ -43,10 +43,10 @@ async function renderQRtoPNG(code: string, type: QRCodeType): Promise<string> {
   });
   console.log('[QR SVG CREATED]', code);
 
-  // 2. Create canvas to composite QR + label
+  // 2. Create canvas — QR only, no text labels
   const canvas = document.createElement('canvas');
   canvas.width  = SIZE + MARGIN * 2;
-  canvas.height = SIZE + MARGIN * 2 + 40; // extra space for label
+  canvas.height = SIZE + MARGIN * 2;
   const ctx = canvas.getContext('2d')!;
   console.log('[QR CANVAS CREATED]', code);
 
@@ -54,28 +54,13 @@ async function renderQRtoPNG(code: string, type: QRCodeType): Promise<string> {
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Top accent bar
-  ctx.fillStyle = type === 'Golden' ? '#B45309' : RED;
-  ctx.fillRect(0, 0, canvas.width, 6);
-
   // Load QR image onto canvas
   await new Promise<void>((resolve, reject) => {
     const img = new Image();
-    img.onload  = () => { ctx.drawImage(img, MARGIN, MARGIN + 6, SIZE, SIZE); resolve(); };
+    img.onload  = () => { ctx.drawImage(img, MARGIN, MARGIN, SIZE, SIZE); resolve(); };
     img.onerror = reject;
     img.src     = qrDataUrl;
   });
-
-  // Code label below QR
-  ctx.fillStyle = '#111111';
-  ctx.font      = 'bold 13px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(code, canvas.width / 2, SIZE + MARGIN + 6 + 22);
-
-  // Type badge
-  ctx.font      = '10px system-ui';
-  ctx.fillStyle = type === 'Golden' ? '#B45309' : RED;
-  ctx.fillText(`[${type.toUpperCase()}]`, canvas.width / 2, SIZE + MARGIN + 6 + 38);
 
   console.log('[PNG GENERATED]', code);
 
