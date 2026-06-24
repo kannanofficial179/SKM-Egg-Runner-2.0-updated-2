@@ -1,16 +1,13 @@
 /**
  * PROTEIN TRACKER — QR Scan Screen
  *
- * Uses validateEggForProtein() — read-only QR check that does NOT
- * consume game play credits. The protein tracker and the game runner
- * are independent systems that share the same QR codes but track
- * usage separately.
+ * Fix: camera div is always in the DOM during opening+scanning phases.
+ * The spinner overlays on top during 'opening'. scanner.start() resolves
+ * before we flip to 'scanning', so html5-qrcode always measures a real
+ * sized container → no black screen.
  *
- * Flow:
- *   idle → camera open → scanning → QR detected →
- *   validateEggForProtein (read-only Firestore) →
- *   logEggScan (writes protein_logs + daily_stats + streak) →
- *   success screen
+ * URL-encoded QR payloads (https://.../?qr=EGG-000001) are handled by
+ * validateEggForProtein which now uses extractCode() shared with the game.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -52,16 +49,16 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
   const [settings,       setSettings]       = useState<TrackerSettings | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
-  const scannerRef     = useRef<Html5Qrcode | null>(null);
-  const processingRef  = useRef(false);   // prevents duplicate scan callbacks
-  const mountedRef     = useRef(true);    // prevents setState after unmount
+  const scannerRef    = useRef<Html5Qrcode | null>(null);
+  const processingRef = useRef(false);
+  const mountedRef    = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // ── Load today's history ────────────────────────────────────
+  // ── Load today's history ──────────────────────────────────────
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
@@ -84,7 +81,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
-  // ── Scanner lifecycle ───────────────────────────────────────
+  // ── Scanner lifecycle ─────────────────────────────────────────
   const stopScanner = useCallback(async () => {
     if (!scannerRef.current) return;
     try {
@@ -98,10 +95,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
     scannerRef.current = null;
   }, []);
 
-  // Always stop scanner on unmount
-  useEffect(() => {
-    return () => { stopScanner(); };
-  }, [stopScanner]);
+  useEffect(() => { return () => { stopScanner(); }; }, [stopScanner]);
 
   // Animated dots while scanning
   useEffect(() => {
@@ -110,121 +104,114 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
     return () => clearInterval(t);
   }, [phase]);
 
-  // ── Open camera ─────────────────────────────────────────────
+  // ── Open camera ───────────────────────────────────────────────
+  // KEY FIX: we set phase='opening' first (renders the camera div visible
+  // and full-size), wait two animation frames for the DOM to paint, then
+  // call scanner.start(). Only after start() resolves do we set 'scanning'.
+  // This ensures html5-qrcode always measures a real-sized container.
   const openCamera = useCallback(async () => {
-    console.log('[SCAN BUTTON CLICKED]');
+    console.log('[PROTEIN SCANNER OPEN]');
     setPhase('opening');
     setErrorMessage('');
     processingRef.current = false;
 
-    // Ensure any previous scanner is cleaned up
     await stopScanner();
 
-    // Give the DOM a tick to render the qr-reader div
-    await new Promise(r => setTimeout(r, 80));
+    // Two rAF + small timeout: let React paint the camera div at full size
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    await new Promise(r => setTimeout(r, 120));
 
     const el = document.getElementById(QR_ELEMENT_ID);
     if (!el) {
       console.error('[SCAN] QR reader DOM element not found');
-      setErrorMessage('Camera view unavailable. Please try again.');
-      setPhase('error');
+      if (mountedRef.current) { setErrorMessage('Camera view unavailable. Please try again.'); setPhase('error'); }
       return;
     }
 
+    const rect = el.getBoundingClientRect();
+    console.log('[VIDEO ATTACHED] container:', Math.round(rect.width), 'x', Math.round(rect.height));
+
     try {
-      // Release any lingering camera tracks from a previous session
-      // before handing the camera to html5-qrcode
-      if (navigator.mediaDevices) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          console.log('[CAMERA REQUESTED]');
-          console.log('[CAMERA GRANTED]');
-          console.log('[STREAM RECEIVED]', `tracks: ${stream.getTracks().length}`);
-          stream.getTracks().forEach(t => t.stop()); // release immediately
-        } catch { /* permission check will happen inside html5-qrcode */ }
+      // Release any lingering tracks before html5-qrcode re-acquires the camera
+      console.log('[CAMERA REQUESTED]');
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        console.log('[CAMERA GRANTED]');
+        console.log('[STREAM RECEIVED] tracks:', probe.getTracks().length);
+        probe.getTracks().forEach(t => t.stop());
+      } catch (e: any) {
+        console.warn('[CAMERA REQUESTED] probe failed (will retry inside scanner):', e?.message);
       }
 
-      const scanner = new Html5Qrcode(QR_ELEMENT_ID);
+      const scanner = new Html5Qrcode(QR_ELEMENT_ID, { verbose: false });
       scannerRef.current = scanner;
 
-      // qrbox sized to 80vw clamped 280–350px for reliable mobile detection
-      const vw = Math.min(window.innerWidth, window.innerHeight);
+      const vw      = Math.min(window.innerWidth, window.innerHeight);
       const boxSize = Math.min(350, Math.max(280, Math.round(vw * 0.80)));
 
-      console.log('[SCANNER STARTED] boxSize:', boxSize);
-      setPhase('scanning');
-
+      // Start FIRST — flip to 'scanning' only after camera is streaming
       await scanner.start(
         { facingMode: 'environment' },
         { fps: 15, qrbox: { width: boxSize, height: boxSize } },
         async (decoded) => {
           if (processingRef.current) return;
           processingRef.current = true;
-          console.log('[QR DETECTED]', decoded.slice(0, 60));
+          console.log('[QR DETECTED]', decoded.slice(0, 80));
           await handleScan(decoded);
         },
-        () => { /* no QR in frame — ignore */ }
+        () => { /* no QR in frame — suppress */ }
       );
 
-      // Verify video is actually streaming after start
+      console.log('[SCANNER STARTED] boxSize:', boxSize);
+      if (mountedRef.current) setPhase('scanning');
+
       setTimeout(() => {
         const video = document.querySelector(`#${QR_ELEMENT_ID} video`) as HTMLVideoElement | null;
         if (video) {
-          console.log('[VIDEO ATTACHED] videoWidth:', video.videoWidth, 'videoHeight:', video.videoHeight);
-          if (video.videoWidth === 0 || video.videoHeight === 0) {
-            console.warn('[VIDEO PLAYING] dimensions are 0 — stream may not have started yet');
-          } else {
-            console.log('[VIDEO PLAYING] stream active');
-          }
+          console.log('[VIDEO PLAYING] videoWidth:', video.videoWidth, 'videoHeight:', video.videoHeight);
         } else {
-          console.warn('[VIDEO ATTACHED] no video element found');
+          console.warn('[VIDEO PLAYING] no <video> element found');
         }
-      }, 1200);
+      }, 1500);
 
     } catch (err: unknown) {
       const msg = (err as { message?: string }).message ?? String(err);
       console.error('[SCAN] Camera start error:', msg);
-      const isPermission = msg.toLowerCase().includes('permission') ||
-                           msg.toLowerCase().includes('denied') ||
-                           msg.toLowerCase().includes('notallowed');
-      setErrorMessage(
-        isPermission
-          ? 'Camera permission denied. Please allow camera access in your browser settings and try again.'
-          : 'Unable to open camera. Please check your device settings.'
-      );
-      setPhase('error');
+      if (mountedRef.current) {
+        const isPerm = /permission|denied|notallowed/i.test(msg);
+        setErrorMessage(
+          isPerm
+            ? 'Camera permission denied. Please allow camera access in your browser settings and try again.'
+            : `Unable to open camera: ${msg}`
+        );
+        setPhase('error');
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopScanner]);
 
-  // ── Core scan handler ────────────────────────────────────────
+  // ── Core scan handler ─────────────────────────────────────────
   const handleScan = async (raw: string) => {
     await stopScanner();
     if (mountedRef.current) setPhase('processing');
 
     try {
-      // Step 1: Validate QR — READ ONLY, does not affect game play counts
-      console.log('[QR VALIDATED] starting validation...');
+      console.log('[QR VALIDATED] starting validation…');
       const validation = await validateEggForProtein(raw);
 
       if (!validation.ok) {
-        const failedValidation = validation as { ok: false; reason: string; message: string };
-        console.warn('[SCAN] Validation failed:', failedValidation.reason, failedValidation.message);
-        if (mountedRef.current) {
-          setErrorMessage(failedValidation.message);
-          setPhase('error');
-        }
+        const failed = validation as { ok: false; reason: string; message: string };
+        console.warn('[SCAN] Validation failed:', failed.reason, failed.message);
+        if (mountedRef.current) { setErrorMessage(failed.message); setPhase('error'); }
         return;
       }
 
-      console.log('[QR VALIDATED] code accepted:', validation.eggCode);
+      console.log('[QR VALIDATED] accepted:', validation.eggCode);
+      console.log('[PROTEIN ADDED] logging +', PROTEIN_PER_EGG, 'g to Firebase…');
 
-      // Step 2: Log egg scan — writes to protein_logs, daily_stats, streak
-      console.log('[PROTEIN ADDED] logging to Firebase...');
       const { streak: streakInfo } = await logEggScan(user.uid, validation.eggCode);
       console.log('[FIREBASE UPDATED] protein_logs + daily_stats + streak written');
 
-      // Step 3: Reload today's stats to get accurate post-scan totals
       const [ts, stg] = await Promise.all([
         getTodayStats(user.uid),
         getTrackerSettings(user.uid),
@@ -233,12 +220,12 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       if (!mountedRef.current) return;
 
       setResult({
-        protein: PROTEIN_PER_EGG,
-        streak: streakInfo.currentStreak,
-        todayEggs: ts?.totalEggs ?? 0,
+        protein:      PROTEIN_PER_EGG,
+        streak:       streakInfo.currentStreak,
+        todayEggs:    ts?.totalEggs    ?? 0,
         todayProtein: ts?.totalProtein ?? 0,
-        goal: stg.dailyGoal,
-        eggCode: validation.eggCode,
+        goal:         stg.dailyGoal,
+        eggCode:      validation.eggCode,
       });
       setPhase('success');
 
@@ -246,7 +233,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       const msg = (err as { message?: string }).message ?? String(err);
       console.error('[SCAN] handleScan error:', msg);
       if (mountedRef.current) {
-        // Classify common Firestore errors for the user
         if (msg.includes('permission') || msg.includes('insufficient')) {
           setErrorMessage('Permission error. Please log out and log back in, then try again.');
         } else if (msg.includes('network') || msg.includes('offline')) {
@@ -259,7 +245,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
     }
   };
 
-  // ── UI actions ───────────────────────────────────────────────
+  // ── UI actions ────────────────────────────────────────────────
   const reset = useCallback(async () => {
     await stopScanner();
     processingRef.current = false;
@@ -281,18 +267,20 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
   }, [stopScanner, loadHistory, openCamera]);
 
   // ── Derived values ────────────────────────────────────────────
-  const goal      = settings?.dailyGoal ?? 60;
-  const consumed  = todayStats?.totalProtein ?? 0;
-  const eggs      = todayStats?.totalEggs ?? 0;
-  const pct       = Math.min(100, Math.round((consumed / goal) * 100));
-  const remaining = Math.max(0, goal - consumed);
+  const goal       = settings?.dailyGoal   ?? 60;
+  const consumed   = todayStats?.totalProtein ?? 0;
+  const eggs       = todayStats?.totalEggs    ?? 0;
+  const pct        = Math.min(100, Math.round((consumed / goal) * 100));
+  const remaining  = Math.max(0, goal - consumed);
   const eggsToGoal = Math.max(0, Math.ceil(remaining / PROTEIN_PER_EGG));
+
+  const isCameraPhase = phase === 'opening' || phase === 'scanning';
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* ── Header — hidden during scanning so camera fills the full area ── */}
-      {phase !== 'scanning' && (
+      {/* Header — hidden while camera is active */}
+      {!isCameraPhase && phase !== 'processing' && (
         <div style={{
           background: 'linear-gradient(135deg,#D71920,#B31217)',
           padding: '18px 18px 16px', flexShrink: 0,
@@ -347,8 +335,8 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
                 {[
-                  { label: '+1 Egg logged',                bg: '#FCE8E8', color: '#D71920' },
-                  { label: `+${PROTEIN_PER_EGG}g protein`, bg: '#F0FDF4', color: '#16A34A' },
+                  { label: '+1 Egg logged',                 bg: '#FCE8E8', color: '#D71920' },
+                  { label: `+${PROTEIN_PER_EGG}g protein`,  bg: '#F0FDF4', color: '#16A34A' },
                 ].map(b => (
                   <div key={b.label} style={{ background: b.bg, borderRadius: 12, padding: '10px 8px' }}>
                     <span style={{ fontSize: 12, fontWeight: 800, color: b.color }}>{b.label}</span>
@@ -370,7 +358,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <p style={{ fontSize: 13, fontWeight: 900, color: '#1A1A1A', margin: 0 }}>Today's Scans</p>
                 <span style={{ fontSize: 11, fontWeight: 800, color: '#D71920' }}>
-                  {loadingHistory ? '...' : `${scanHistory.length} egg${scanHistory.length !== 1 ? 's' : ''}`}
+                  {loadingHistory ? '…' : `${scanHistory.length} egg${scanHistory.length !== 1 ? 's' : ''}`}
                 </span>
               </div>
               {loadingHistory ? (
@@ -436,7 +424,12 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
             {/* How it works */}
             <div style={{ background: '#fff', borderRadius: 20, padding: 18, boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
               <p style={{ fontSize: 11, fontWeight: 800, color: '#999', textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 12px' }}>How It Works</p>
-              {['Purchase any SKM Egg product', 'Find the QR code on the packaging', 'Tap "Open Camera" and scan the code', 'Protein is logged instantly to your daily goal'].map((step, i) => (
+              {[
+                'Purchase any SKM Egg product',
+                'Find the QR code on the packaging',
+                'Tap "Open Camera" and scan the code',
+                'Protein is logged instantly to your daily goal',
+              ].map((step, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: i < 3 ? 10 : 0 }}>
                   <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#D71920', color: '#fff', fontSize: 11, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</div>
                   <p style={{ fontSize: 12, color: '#1A1A1A', margin: 0, paddingTop: 2, lineHeight: 1.4 }}>{step}</p>
@@ -447,68 +440,76 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
         </div>
       )}
 
-      {/* ── OPENING ── */}
-      {phase === 'opening' && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid #FCE8E8', borderTopColor: '#D71920', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ fontSize: 14, color: '#666', fontWeight: 600, margin: 0 }}>Opening camera...</p>
-          <div id={QR_ELEMENT_ID} style={{ display: 'none' }} />
-        </div>
-      )}
-
-      {/* ── SCANNING — full-screen camera ── */}
-      {phase === 'scanning' && (
+      {/* ── CAMERA PHASE — opening + scanning share the same DOM node ──────────
+          The QR_ELEMENT_ID div is always rendered at full size here.
+          During 'opening' a black spinner overlay sits on top (z-index 20).
+          scanner.start() resolves → we remove the overlay by flipping to 'scanning'.
+          html5-qrcode always measures a real-sized container → no black screen. */}
+      {isCameraPhase && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#000' }}>
 
-          {/* Camera viewport — position:relative so all overlays anchor here */}
+          {/* Camera viewport */}
           <div style={{ position: 'relative', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-            {/* html5-qrcode root — pinned to fill entire viewport via CSS below */}
+            {/* Always-present camera container — full size */}
             <div id={QR_ELEMENT_ID} style={{ position: 'absolute', inset: 0 }} />
 
-            {/* Dark vignette: 4 gradient strips that darken edges, leaving centre clear */}
-            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 22%, transparent 78%, rgba(0,0,0,0.5) 100%)' }} />
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.35) 0%, transparent 18%, transparent 82%, rgba(0,0,0,0.35) 100%)' }} />
-            </div>
-
-            {/* Scan frame — large, centred, matches qrbox size */}
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 3 }}>
-              <div style={{ position: 'relative', width: 'min(80vw,350px)', height: 'min(80vw,350px)', minWidth: 280, minHeight: 280 }}>
-                {/* White outer brackets */}
-                <div style={{ position: 'absolute', top: 0,    left: 0,  width: 52, height: 52, borderTop: '4px solid #fff', borderLeft: '4px solid #fff',   borderTopLeftRadius: 14 }} />
-                <div style={{ position: 'absolute', top: 0,    right: 0, width: 52, height: 52, borderTop: '4px solid #fff', borderRight: '4px solid #fff',  borderTopRightRadius: 14 }} />
-                <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 52, height: 52, borderBottom: '4px solid #fff', borderLeft: '4px solid #fff',  borderBottomLeftRadius: 14 }} />
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 52, height: 52, borderBottom: '4px solid #fff', borderRight: '4px solid #fff', borderBottomRightRadius: 14 }} />
-                {/* Red inner accent corners */}
-                <div style={{ position: 'absolute', top: 0,    left: 0,  width: 28, height: 28, borderTop: '3px solid #D71920', borderLeft: '3px solid #D71920',   borderTopLeftRadius: 14 }} />
-                <div style={{ position: 'absolute', top: 0,    right: 0, width: 28, height: 28, borderTop: '3px solid #D71920', borderRight: '3px solid #D71920',  borderTopRightRadius: 14 }} />
-                <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 28, height: 28, borderBottom: '3px solid #D71920', borderLeft: '3px solid #D71920',  borderBottomLeftRadius: 14 }} />
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderBottom: '3px solid #D71920', borderRight: '3px solid #D71920', borderBottomRightRadius: 14 }} />
-                {/* Animated scan line */}
-                <div style={{
-                  position: 'absolute', left: 10, right: 10, height: 2,
-                  background: 'linear-gradient(90deg,transparent,#D71920 30%,#FF6666 50%,#D71920 70%,transparent)',
-                  boxShadow: '0 0 12px rgba(215,25,32,0.95)',
-                  animation: 'scanline 2s ease-in-out infinite',
-                }} />
-              </div>
-            </div>
-
-            {/* Instruction pill */}
-            <div style={{
-              position: 'absolute', bottom: 22, left: 0, right: 0,
-              display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 3,
-            }}>
+            {/* Spinner overlay during 'opening' — removed once scanning starts */}
+            {phase === 'opening' && (
               <div style={{
-                background: 'rgba(0,0,0,0.62)', borderRadius: 50, padding: '9px 24px',
-                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                position: 'absolute', inset: 0, zIndex: 20, background: '#000',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16,
               }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.2 }}>
-                  Align QR code in the frame{'.'.repeat(dots)}
-                </span>
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%',
+                  border: '3px solid rgba(215,25,32,0.3)', borderTopColor: '#D71920',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: 600, margin: 0 }}>
+                  Opening camera…
+                </p>
               </div>
-            </div>
+            )}
+
+            {/* Scan overlays — only shown once video is streaming */}
+            {phase === 'scanning' && (
+              <>
+                {/* Dark vignette edges */}
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom,rgba(0,0,0,0.5) 0%,transparent 22%,transparent 78%,rgba(0,0,0,0.5) 100%)' }} />
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right,rgba(0,0,0,0.35) 0%,transparent 18%,transparent 82%,rgba(0,0,0,0.35) 100%)' }} />
+                </div>
+
+                {/* Scan frame */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 3 }}>
+                  <div style={{ position: 'relative', width: 'min(80vw,350px)', height: 'min(80vw,350px)', minWidth: 280, minHeight: 280 }}>
+                    <div style={{ position: 'absolute', top: 0,    left: 0,  width: 52, height: 52, borderTop: '4px solid #fff', borderLeft: '4px solid #fff',   borderTopLeftRadius: 14 }} />
+                    <div style={{ position: 'absolute', top: 0,    right: 0, width: 52, height: 52, borderTop: '4px solid #fff', borderRight: '4px solid #fff',  borderTopRightRadius: 14 }} />
+                    <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 52, height: 52, borderBottom: '4px solid #fff', borderLeft: '4px solid #fff',  borderBottomLeftRadius: 14 }} />
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 52, height: 52, borderBottom: '4px solid #fff', borderRight: '4px solid #fff', borderBottomRightRadius: 14 }} />
+                    <div style={{ position: 'absolute', top: 0,    left: 0,  width: 28, height: 28, borderTop: '3px solid #D71920', borderLeft: '3px solid #D71920',   borderTopLeftRadius: 14 }} />
+                    <div style={{ position: 'absolute', top: 0,    right: 0, width: 28, height: 28, borderTop: '3px solid #D71920', borderRight: '3px solid #D71920',  borderTopRightRadius: 14 }} />
+                    <div style={{ position: 'absolute', bottom: 0, left: 0,  width: 28, height: 28, borderBottom: '3px solid #D71920', borderLeft: '3px solid #D71920',  borderBottomLeftRadius: 14 }} />
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderBottom: '3px solid #D71920', borderRight: '3px solid #D71920', borderBottomRightRadius: 14 }} />
+                    <div style={{
+                      position: 'absolute', left: 10, right: 10, height: 2,
+                      background: 'linear-gradient(90deg,transparent,#D71920 30%,#FF6666 50%,#D71920 70%,transparent)',
+                      boxShadow: '0 0 12px rgba(215,25,32,0.95)',
+                      animation: 'scanline 2s ease-in-out infinite',
+                    }} />
+                  </div>
+                </div>
+
+                {/* Instruction pill */}
+                <div style={{ position: 'absolute', bottom: 22, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 3 }}>
+                  <div style={{ background: 'rgba(0,0,0,0.62)', borderRadius: 50, padding: '9px 24px', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: 0.2 }}>
+                      Align QR code in the frame{'.'.repeat(dots)}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Cancel bar */}
@@ -516,8 +517,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
             <button onClick={reset} style={{
               width: '100%', maxWidth: 300, padding: '14px 0', borderRadius: 14,
               border: '1.5px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)',
-              color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-              letterSpacing: 0.3,
+              color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', letterSpacing: 0.3,
             }}>
               Cancel
             </button>
@@ -530,8 +530,8 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', border: '4px solid #FCE8E8', borderTopColor: '#D71920', animation: 'spin 0.8s linear infinite' }} />
           <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 16, fontWeight: 800, color: '#1A1A1A', margin: '0 0 4px' }}>Logging Egg...</p>
-            <p style={{ fontSize: 12, color: '#bbb', margin: 0 }}>Saving protein intake...</p>
+            <p style={{ fontSize: 16, fontWeight: 800, color: '#1A1A1A', margin: '0 0 4px' }}>Logging Egg…</p>
+            <p style={{ fontSize: 12, color: '#bbb', margin: 0 }}>Saving +{PROTEIN_PER_EGG}g protein…</p>
           </div>
         </div>
       )}
@@ -551,10 +551,15 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
                 <CheckCircleIcon size={38} color="#fff" />
               </div>
               <h3 style={{ fontSize: 21, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px' }}>Egg Logged!</h3>
-              <p style={{ fontSize: 12, color: '#666', margin: '0 0 18px' }}>Protein intake recorded successfully.</p>
+              <p style={{ fontSize: 12, color: '#666', margin: '0 0 4px' }}>
+                +{result.protein}g protein added successfully.
+              </p>
+              <p style={{ fontSize: 11, color: '#999', margin: '0 0 18px', fontFamily: 'monospace' }}>
+                {result.eggCode}
+              </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 14 }}>
                 <RBox label="Protein Added" value={`+${result.protein}g`} color="#D71920" bg="#FCE8E8" />
-                <RBox label="Day Streak"    value={`${result.streak}d`}  color="#22C55E" bg="#F0FDF4" />
+                <RBox label="Day Streak"    value={`${result.streak}d`}   color="#22C55E" bg="#F0FDF4" />
               </div>
               <div style={{ background: '#F8F8F8', borderRadius: 14, padding: '12px 14px', marginBottom: 14, textAlign: 'left' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -621,24 +626,18 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       )}
 
       <style>{`
-        @keyframes spin     { to { transform: rotate(360deg); } }
+        @keyframes spin    { to { transform: rotate(360deg); } }
         @keyframes scanline { 0% { top: 0%; } 50% { top: calc(100% - 2px); } 100% { top: 0%; } }
-        @keyframes popIn    { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes popIn   { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        /* ── html5-qrcode override ──────────────────────────────
-           CRITICAL: do NOT set position:static on descendant divs.
-           html5-qrcode uses position:relative on its inner wrapper
-           as the containing block for the video's position:absolute.
-           Overriding it to static collapses that block → black screen.
-
-           Only target the outermost div + video directly.           */
+        /* html5-qrcode CSS — surgical overrides only.
+           DO NOT set position:static on descendant divs: html5-qrcode needs
+           position:relative on its inner wrapper as the video's containing block. */
 
         #${QR_ELEMENT_ID} {
           overflow: hidden !important;
           background: #000 !important;
         }
-
-        /* Outermost injected wrapper only — kill fixed pixel size */
         #${QR_ELEMENT_ID} > div {
           width: 100% !important;
           height: 100% !important;
@@ -649,8 +648,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
           border: none !important;
           background: #000 !important;
         }
-
-        /* Video: cover the entire container */
         #${QR_ELEMENT_ID} video {
           position: absolute !important;
           inset: 0 !important;
@@ -665,8 +662,6 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
           background: #000 !important;
           z-index: 1 !important;
         }
-
-        /* Hide non-video chrome injected by html5-qrcode */
         #${QR_ELEMENT_ID} img,
         #${QR_ELEMENT_ID} button,
         #${QR_ELEMENT_ID} select,

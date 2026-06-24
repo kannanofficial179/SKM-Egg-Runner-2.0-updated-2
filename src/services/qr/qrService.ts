@@ -22,6 +22,24 @@ export type QRValidationResult =
 // Codes that bypass Firestore and grant unlimited access
 const GOLDEN_PASS_CODES = new Set(['SKM-GOLDEN-PASS']);
 
+// ── URL / bare-code extractor ─────────────────────────────────────────────────
+// Handles both bare codes ("EGG-000001") and URL-encoded QR payloads
+// ("https://skm-egg-runner.vercel.app/?qr=EGG-000001").
+function extractCode(raw: string): string {
+  const trimmed = raw.trim();
+  try {
+    const url = new URL(trimmed);
+    const qrParam = url.searchParams.get('qr');
+    if (qrParam) {
+      console.log('[QR ID] Extracted from URL param:', qrParam.toUpperCase());
+      return qrParam.trim().toUpperCase();
+    }
+  } catch {
+    // Not a URL — treat as bare code
+  }
+  return trimmed.replace(/\s+/g, '').toUpperCase();
+}
+
 // ── Protein tracker egg validation ───────────────────────────────────────────
 // READ-ONLY — does NOT increment playCount or affect game sessions.
 // Validates that the QR code is a genuine, active SKM Egg product.
@@ -33,8 +51,11 @@ export type EggQRValidationResult =
   | { ok: false; reason: 'NOT_FOUND' | 'INACTIVE' | 'ERROR'; message: string };
 
 export async function validateEggForProtein(rawCode: string): Promise<EggQRValidationResult> {
-  const code = rawCode.trim().replace(/\s+/g, '').toUpperCase();
-  console.log('[SCAN] QR detected:', code);
+  // Use the same URL extractor as validateAndUseQR so
+  // https://.../?qr=EGG-000001 is resolved to EGG-000001
+  const code = extractCode(rawCode);
+  console.log('[PROTEIN SCANNER OPEN] raw:', rawCode.slice(0, 60));
+  console.log('[QR DETECTED] resolved code:', code);
 
   // Golden pass codes are always valid for protein tracking
   if (GOLDEN_PASS_CODES.has(code)) {
@@ -89,23 +110,6 @@ export async function validateEggForProtein(rawCode: string): Promise<EggQRValid
  * Validates a scanned QR code against Firestore and atomically increments
  * playCount if the code is valid and under its maxPlays limit.
  */
-// Extract QR code ID from either a bare code or a full URL.
-// Handles: "EGG-000001", "https://skm-egg-runner.vercel.app/?qr=EGG-000001"
-function extractCode(raw: string): string {
-  const trimmed = raw.trim();
-  try {
-    const url = new URL(trimmed);
-    const qrParam = url.searchParams.get('qr');
-    if (qrParam) {
-      console.log('[QR ID] Extracted from URL param:', qrParam.toUpperCase());
-      return qrParam.trim().toUpperCase();
-    }
-  } catch {
-    // Not a URL — treat as bare code
-  }
-  return trimmed.replace(/\s+/g, '').toUpperCase();
-}
-
 export async function validateAndUseQR(rawCode: string): Promise<QRValidationResult> {
   console.log('[SCAN RECEIVED]', rawCode);
 
