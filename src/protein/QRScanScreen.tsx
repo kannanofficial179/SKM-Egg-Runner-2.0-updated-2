@@ -146,13 +146,19 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       const scanner = new Html5Qrcode(QR_ELEMENT_ID, { verbose: false });
       scannerRef.current = scanner;
 
-      const vw      = Math.min(window.innerWidth, window.innerHeight);
-      const boxSize = Math.min(350, Math.max(280, Math.round(vw * 0.80)));
+      // Use qrbox as a function — html5-qrcode calls it AFTER the video is
+      // sized, so we get real viewfinder dimensions instead of 0×0.
+      // Clamp to 80% of the smaller dimension, min 200px, max 350px.
+      const qrboxFn = (w: number, h: number) => {
+        const side = Math.min(350, Math.max(200, Math.round(Math.min(w, h) * 0.80)));
+        console.log('[SCANNER STARTED] viewfinder:', w, 'x', h, '→ qrbox:', side);
+        return { width: side, height: side };
+      };
 
       // Start FIRST — flip to 'scanning' only after camera is streaming
       await scanner.start(
         { facingMode: 'environment' },
-        { fps: 15, qrbox: { width: boxSize, height: boxSize } },
+        { fps: 15, qrbox: qrboxFn },
         async (decoded) => {
           if (processingRef.current) return;
           processingRef.current = true;
@@ -162,7 +168,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
         () => { /* no QR in frame — suppress */ }
       );
 
-      console.log('[SCANNER STARTED] boxSize:', boxSize);
+      console.log('[SCANNER STARTED] scanner.start() resolved');
       if (mountedRef.current) setPhase('scanning');
 
       setTimeout(() => {

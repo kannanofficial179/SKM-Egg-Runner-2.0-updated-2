@@ -270,13 +270,15 @@ function QRAccessModal({
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(QR_ELEMENT_ID);
       }
-      // qrbox sized to 80vw clamped between 280–350px for mobile reliability
-      const vw = Math.min(window.innerWidth, window.innerHeight);
-      const boxSize = Math.min(350, Math.max(280, Math.round(vw * 0.80)));
+      // qrbox as function — called after video is sized, avoids 0×0 on desktop
+      const qrboxFn = (w: number, h: number) => {
+        const side = Math.min(350, Math.max(200, Math.round(Math.min(w, h) * 0.80)));
+        return { width: side, height: side };
+      };
 
       await scannerRef.current.start(
         { facingMode: 'environment' },
-        { fps: 15, qrbox: { width: boxSize, height: boxSize } },
+        { fps: 15, qrbox: qrboxFn },
         async (decoded) => {
           if (handledRef.current) return;
           handledRef.current = true;
