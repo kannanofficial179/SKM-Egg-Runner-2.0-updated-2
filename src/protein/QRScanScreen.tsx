@@ -688,7 +688,7 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               }}>
                 <span style={{ fontSize: 20, flexShrink: 0 }}>ℹ️</span>
                 <p style={{ fontSize: 12, color: '#92400E', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
-                  No additional protein awarded. Each egg can only be credited once per account.
+                  This egg has already been scanned and added to your protein tracker. Each egg can only be recorded once per account.
                 </p>
               </div>
 
