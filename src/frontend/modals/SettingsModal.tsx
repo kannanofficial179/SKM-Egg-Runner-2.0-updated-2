@@ -59,6 +59,7 @@ interface SettingsModalProps {
   missions?: any[];
   setMissions?: React.Dispatch<React.SetStateAction<any[]>>;
   fps?: number;
+  onNavigateQR?: () => void;
 }
 
 const ENCODED_DEV_NAME = "REVWRUxPUEVS"; // base64 for "DEVELOPER"
@@ -91,7 +92,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setAchievements,
   missions,
   setMissions,
-  fps = 60
+  fps = 60,
+  onNavigateQR,
 }) => {
   const [view, setView] = useState<SettingsView>(initialView);
   const [activeTab, setActiveTab] = useState<DevTab>('BALANCING');
@@ -1120,7 +1122,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-900/50">
                   AUTO-EXIT: {formatTime(timeLeft)}
                 </span>
-                <button 
+                {onNavigateQR && (
+                  <button
+                    onClick={() => { soundManager.playClick(); onNavigateQR(); }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-bold transition cursor-pointer whitespace-nowrap"
+                    style={{ background: 'rgba(215,25,32,0.15)', borderColor: 'rgba(215,25,32,0.5)', color: '#D71920' }}
+                    title="Open QR Management"
+                  >
+                    ▦ QR Management
+                  </button>
+                )}
+                <button
                   onClick={() => { soundManager.playClick(); setView('SETTINGS'); }}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
                 >

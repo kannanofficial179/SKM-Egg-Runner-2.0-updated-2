@@ -6,6 +6,7 @@ import WelcomeScreen from './auth/WelcomeScreen.tsx';
 import ProfileSetupScreen from './auth/ProfileSetupScreen.tsx';
 import ModuleSelectScreen from './auth/ModuleSelectScreen.tsx';
 import ProteinTrackerScreen from './auth/ProteinTrackerScreen.tsx';
+import QRManagementPage from './pages/qr-management/QRManagementPage.tsx';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './services/firebase/firebase.ts';
 import { startRealtimeConfigSync } from './liveConfig.ts';
@@ -30,7 +31,10 @@ startRealtimeConfigSync();
 // ─────────────────────────────────────────────────────────────────────────────
 
 type ProfileStatus = 'CHECKING' | 'NEEDED' | 'READY';
-type AppScreen     = 'MODULE_SELECT' | 'GAME' | 'PROTEIN_TRACKER';
+type AppScreen     = 'MODULE_SELECT' | 'GAME' | 'PROTEIN_TRACKER' | 'QR_MANAGEMENT';
+
+// Check if the URL path is /codes on initial load
+const INITIAL_PATH = window.location.pathname;
 
 function AppRoot() {
   const { user } = useAuth();
@@ -82,9 +86,18 @@ function AppRoot() {
       });
   }, [user]);
 
-  // Reset screen to MODULE_SELECT when a different user logs in
+  // Reset screen to MODULE_SELECT when a different user logs in,
+  // but honour /codes deep-link if that's where they arrived.
   useEffect(() => {
-    if (user?.uid) setScreen('MODULE_SELECT');
+    if (user?.uid) {
+      if (INITIAL_PATH === '/codes') {
+        setScreen('QR_MANAGEMENT');
+        // Clean up the URL so refresh doesn't re-trigger unexpectedly
+        window.history.replaceState(null, '', '/codes');
+      } else {
+        setScreen('MODULE_SELECT');
+      }
+    }
   }, [user?.uid]);
 
   // ── Loading splash ────────────────────────────────────────────────────────
@@ -148,6 +161,10 @@ function AppRoot() {
       <ModuleSelectScreen
         onSelectGame={()    => setScreen('GAME')}
         onSelectTracker={() => setScreen('PROTEIN_TRACKER')}
+        onSelectQR={() => {
+          window.history.replaceState(null, '', '/codes');
+          setScreen('QR_MANAGEMENT');
+        }}
       />
     );
   }
@@ -157,6 +174,18 @@ function AppRoot() {
     return (
       <ProteinTrackerScreen
         onBack={() => setScreen('MODULE_SELECT')}
+      />
+    );
+  }
+
+  // ── QR Management (/codes) — admin only ───────────────────────────────────
+  if (screen === 'QR_MANAGEMENT') {
+    return (
+      <QRManagementPage
+        onBack={() => {
+          window.history.replaceState(null, '', '/');
+          setScreen('MODULE_SELECT');
+        }}
       />
     );
   }

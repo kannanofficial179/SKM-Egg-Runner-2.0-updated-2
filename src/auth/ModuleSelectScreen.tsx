@@ -7,6 +7,7 @@ import { SettingsModal } from '../frontend/modals/SettingsModal';
 interface ModuleSelectScreenProps {
   onSelectGame:    () => void;
   onSelectTracker: () => void;
+  onSelectQR?:     () => void;
 }
 
 const LAST_MODULE_KEY  = 'skm_last_module';
@@ -479,7 +480,7 @@ function QRAccessModal({
 const TAP_REQUIRED = 12;
 const TAP_INTERVAL = 1500;
 
-export default function ModuleSelectScreen({ onSelectGame, onSelectTracker }: ModuleSelectScreenProps) {
+export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSelectQR }: ModuleSelectScreenProps) {
   const [visible,      setVisible]      = useState(false);
   const [pressing,     setPressing]     = useState<'game' | 'tracker' | null>(null);
   const [showQRModal,  setShowQRModal]  = useState(false);
@@ -726,6 +727,7 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker }: Mo
           onToggleMusic={() => {}}
           onStartGame={() => {}}
           initialView="DEV_PANEL"
+          onNavigateQR={onSelectQR ? () => { setShowDevPanel(false); onSelectQR(); } : undefined}
         />
       )}
     </>
