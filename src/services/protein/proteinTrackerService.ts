@@ -18,6 +18,7 @@ import {
   serverTimestamp, Timestamp,
   query, orderBy, limit, where,
   increment,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 // Shared utilities — single source of truth
@@ -232,28 +233,78 @@ export async function addRewards(uid: string, xp: number, coins: number): Promis
 }
 
 // ─────────────────────────────────────────────────────────────
+// PROTEIN SCAN DEDUPLICATION
+// Collection: proteinScans/{uid}_{qrCode}
+// Each user can earn protein credit from a specific QR exactly once.
+// Game access (validateAndUseQR) is completely separate — unaffected.
+// ─────────────────────────────────────────────────────────────
+
+function proteinScanDocId(uid: string, qrCode: string): string {
+  // Sanitise qrCode — Firestore doc IDs cannot contain '/'
+  const safeCode = qrCode.replace(/\//g, '_');
+  return `${uid}_${safeCode}`;
+}
+
+/** Returns true if this user has already received protein credit for this QR. */
+export async function checkProteinScanExists(uid: string, qrCode: string): Promise<boolean> {
+  const ref  = doc(db, 'proteinScans', proteinScanDocId(uid, qrCode));
+  const snap = await getDoc(ref);
+  return snap.exists();
+}
+
+// ─────────────────────────────────────────────────────────────
 // LOG AN EGG (QR scan)
 // ─────────────────────────────────────────────────────────────
 
 export async function logEggScan(uid: string, qrCode: string): Promise<{
   entry: ProteinLogEntry; streak: StreakInfo; xpEarned: number; coinsEarned: number;
 }> {
-  const dateKey = todayKey();
+  const dateKey   = todayKey();
+  const dedupRef  = doc(db, 'proteinScans', proteinScanDocId(uid, qrCode));
+  const colRef    = collection(db, 'protein_logs', uid, 'entries');
+
+  // Write the dedup record inside a transaction so it's atomic.
+  // If the doc already exists the transaction returns null and we skip.
+  let entryId: string | null = null;
+
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(dedupRef);
+    if (snap.exists()) {
+      // Already logged — transaction is a no-op; caller should have checked first
+      return;
+    }
+    // Mark as used
+    tx.set(dedupRef, {
+      userId:       uid,
+      qrId:         qrCode,
+      proteinAdded: PROTEIN_PER_EGG,
+      timestamp:    serverTimestamp(),
+    });
+    // We cannot addDoc inside a transaction, so we pre-generate the ID via a ref
+    const newRef = doc(colRef);
+    entryId = newRef.id;
+    tx.set(newRef, {
+      uid, type: 'qr_scan', foodName: 'SKM Egg',
+      protein: PROTEIN_PER_EGG, calories: CALORIES_PER_EGG,
+      quantity: 1, meal: getMealByTime(), dateKey,
+      loggedAt: serverTimestamp(), qrCode, category: 'Eggs',
+    });
+  });
+
   const entry: Omit<ProteinLogEntry, 'id'> = {
     uid, type: 'qr_scan', foodName: 'SKM Egg',
     protein: PROTEIN_PER_EGG, calories: CALORIES_PER_EGG,
     quantity: 1, meal: getMealByTime(), dateKey,
-    loggedAt: serverTimestamp() as Timestamp, qrCode,
-    category: 'Eggs',
+    loggedAt: serverTimestamp() as Timestamp, qrCode, category: 'Eggs',
   };
-  const colRef = collection(db, 'protein_logs', uid, 'entries');
-  const docRef = await addDoc(colRef, entry);
+
   await updateDailyStats(uid, dateKey, entry.protein, entry.calories, 1);
   const streakInfo = await updateStreak(uid, dateKey);
   await addRewards(uid, XP_PER_EGG, COINS_PER_EGG);
   await updateChallengeProgress(uid, 'scan_egg', 1);
+
   return {
-    entry: { ...entry, id: docRef.id },
+    entry: { ...entry, id: entryId ?? '' },
     streak: streakInfo,
     xpEarned: XP_PER_EGG,
     coinsEarned: COINS_PER_EGG,

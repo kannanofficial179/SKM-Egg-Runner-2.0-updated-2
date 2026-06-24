@@ -99,6 +99,18 @@ service cloud.firestore {
       allow delete: if isDeveloper();
     }
 
+    // Protein scan dedup — one doc per user+QR combination
+    // Doc ID is "{uid}_{qrCode}". Only the owner can read/create.
+    match /proteinScans/{scanId} {
+      allow read:   if isAuth() && request.auth.uid == resource.data.userId;
+      allow create: if isAuth()
+                    && request.auth.uid == request.resource.data.userId
+                    && request.resource.data.proteinAdded is number
+                    && request.resource.data.qrId is string;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // Admin operation log — developer read/write only
     match /qrOperationLogs/{logId} {
       allow read:   if isDeveloper();

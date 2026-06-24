@@ -15,13 +15,14 @@ import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import type { User } from 'firebase/auth';
 import { validateEggForProtein } from '../services/qr/qrService';
 import {
-  logEggScan, getRecentEntries, getTodayStats, getTrackerSettings,
+  logEggScan, checkProteinScanExists,
+  getRecentEntries, getTodayStats, getTrackerSettings,
   PROTEIN_PER_EGG,
   type ProteinLogEntry, type DailyStats, type TrackerSettings,
 } from '../services/protein/proteinTrackerService';
 import { CameraIcon, EggIcon, CheckCircleIcon, AlertIcon } from './Icons';
 
-type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'error';
+type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'duplicate' | 'error';
 
 interface QRScanScreenProps {
   user: User;
@@ -224,8 +225,19 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       }
 
       console.log('[QR VALIDATED] accepted:', validation.eggCode);
-      console.log('[PROTEIN ADDED] logging +', PROTEIN_PER_EGG, 'g to Firebase…');
 
+      // ── Dedup check — same user cannot earn protein from the same QR twice ──
+      const alreadyScanned = await checkProteinScanExists(user.uid, validation.eggCode);
+      if (alreadyScanned) {
+        console.warn('[DEDUP] Protein already recorded for', validation.eggCode, 'by user', user.uid);
+        if (mountedRef.current) {
+          setDupCode(validation.eggCode);
+          setPhase('duplicate');
+        }
+        return;
+      }
+
+      console.log('[PROTEIN ADDED] logging +', PROTEIN_PER_EGG, 'g to Firebase…');
       const { streak: streakInfo } = await logEggScan(user.uid, validation.eggCode);
       console.log('[FIREBASE UPDATED] protein_logs + daily_stats + streak written');
 
@@ -291,7 +303,8 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
   const remaining  = Math.max(0, goal - consumed);
   const eggsToGoal = Math.max(0, Math.ceil(remaining / PROTEIN_PER_EGG));
 
-  const isCameraPhase = phase === 'opening' || phase === 'scanning';
+  const isCameraPhase  = phase === 'opening' || phase === 'scanning';
+  const [dupCode, setDupCode] = useState('');
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -627,6 +640,59 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
                   boxShadow: '0 4px 16px rgba(215,25,32,0.4)',
                 }}>Scan Another</button>
                 <button onClick={onScanSuccess} style={{
+                  flex: 1, padding: '13px 0', borderRadius: 15, border: '1.5px solid #E8E8E8', cursor: 'pointer',
+                  background: '#F5F5F5', color: '#666', fontWeight: 700, fontSize: 13,
+                }}>Done</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DUPLICATE ── */}
+      {phase === 'duplicate' && (
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90 }}>
+          <div style={{ padding: 14 }}>
+            <div style={{ background: '#fff', borderRadius: 22, padding: 26, boxShadow: '0 4px 20px rgba(0,0,0,0.08)', textAlign: 'center' }}>
+              {/* Broken egg icon */}
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%', margin: '0 auto 16px',
+                background: 'linear-gradient(135deg,#FEF3C7,#FDE68A)',
+                border: '2px solid #F59E0B',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)',
+                fontSize: 38,
+              }}>
+                🍳
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 900, color: '#1A1A1A', margin: '0 0 6px' }}>
+                Egg Already Consumed
+              </h3>
+              <p style={{ fontSize: 13, color: '#666', margin: '0 0 6px', lineHeight: 1.6 }}>
+                Protein was already added for this egg.
+              </p>
+              <p style={{ fontSize: 11, color: '#999', margin: '0 0 20px', fontFamily: 'monospace' }}>
+                {dupCode}
+              </p>
+
+              <div style={{
+                background: '#FFFBEB', border: '1px solid #FDE68A',
+                borderRadius: 14, padding: '12px 16px', marginBottom: 20,
+                display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+              }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>ℹ️</span>
+                <p style={{ fontSize: 12, color: '#92400E', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
+                  No additional protein awarded. Each egg can only be credited once per account.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={scanAnother} style={{
+                  flex: 1, padding: '13px 0', borderRadius: 15, border: 'none', cursor: 'pointer',
+                  background: 'linear-gradient(135deg,#D71920,#B31217)', color: '#fff', fontWeight: 900, fontSize: 13,
+                  boxShadow: '0 4px 16px rgba(215,25,32,0.4)',
+                }}>Scan Another</button>
+                <button onClick={reset} style={{
                   flex: 1, padding: '13px 0', borderRadius: 15, border: '1.5px solid #E8E8E8', cursor: 'pointer',
                   background: '#F5F5F5', color: '#666', fontWeight: 700, fontSize: 13,
                 }}>Done</button>
