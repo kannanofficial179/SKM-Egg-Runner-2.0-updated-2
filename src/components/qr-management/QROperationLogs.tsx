@@ -1,32 +1,39 @@
 import React, { useEffect, useState } from 'react';
+import { PauseCircle, PlayCircle, Trash2, Printer, Upload, HardDrive, Activity, Trash } from 'lucide-react';
 import { fetchOpLogs } from '../../services/qr/qrManagementService';
 import type { OpLog } from '../../services/qr/qrManagementService';
 
 const RED = '#D71920';
 
 const OP_COLORS: Record<string, string> = {
-  'disable-all': '#f59e0b',
-  'enable-all':  '#22c55e',
-  'delete-all':  '#ef4444',
-  'print':       '#60a5fa',
-  'export':      '#a78bfa',
-  'backup':      '#34d399',
+  'disable-all':    '#f59e0b',
+  'enable-all':     '#22c55e',
+  'delete-all':     '#ef4444',
+  'delete-selected':'#ef4444',
+  'print':          '#60a5fa',
+  'export':         '#a78bfa',
+  'backup':         '#34d399',
 };
 
-const OP_ICONS: Record<string, string> = {
-  'disable-all': '⏸',
-  'enable-all':  '▶',
-  'delete-all':  '🗑️',
-  'print':       '🖨',
-  'export':      '📤',
-  'backup':      '💾',
-};
+function OpIcon({ op, color }: { op: string; color: string }) {
+  const props = { size: 15, strokeWidth: 2, color };
+  switch (op) {
+    case 'disable-all':     return <PauseCircle {...props} />;
+    case 'enable-all':      return <PlayCircle  {...props} />;
+    case 'delete-all':      return <Trash2      {...props} />;
+    case 'delete-selected': return <Trash       {...props} />;
+    case 'print':           return <Printer     {...props} />;
+    case 'export':          return <Upload      {...props} />;
+    case 'backup':          return <HardDrive   {...props} />;
+    default:                return <Activity    {...props} />;
+  }
+}
 
 function timeAgo(ts: Date): string {
   const diff = Math.floor((Date.now() - ts.getTime()) / 1000);
-  if (diff < 60)   return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400)return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 60)    return `${diff}s ago`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
@@ -68,26 +75,20 @@ export default function QROperationLogs({ refreshKey }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {logs.map((log, i) => {
               const color = OP_COLORS[log.operation] ?? 'rgba(255,255,255,0.5)';
-              const icon  = OP_ICONS[log.operation]  ?? '●';
               return (
-                <div
-                  key={log.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 4px',
-                    borderBottom: i < logs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                  }}
-                >
-                  {/* Icon */}
+                <div key={log.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 4px',
+                  borderBottom: i < logs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                }}>
                   <div style={{
                     width: 34, height: 34, borderRadius: 10, flexShrink: 0,
                     background: `${color}18`, border: `1px solid ${color}33`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {icon}
+                    <OpIcon op={log.operation} color={color} />
                   </div>
 
-                  {/* Details */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>
@@ -105,7 +106,6 @@ export default function QROperationLogs({ refreshKey }: Props) {
                     </div>
                   </div>
 
-                  {/* Time */}
                   <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', flexShrink: 0, textAlign: 'right' }}>
                     {timeAgo(log.ts)}
                   </div>

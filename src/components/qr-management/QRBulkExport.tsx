@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Image, Archive, FileText, Table2, FileSpreadsheet, HardDrive } from 'lucide-react';
 import type { QRCodeRecord } from '../../types/qr/qrManagementTypes';
 import { exportCSV, exportExcel, exportBackupJSON, writeOpLog } from '../../services/qr/qrManagementService';
 
@@ -6,7 +7,7 @@ const RED = '#D71920';
 
 interface ExportBtnProps {
   label:    string;
-  icon:     string;
+  icon:     React.ReactNode;
   onClick:  () => void;
   disabled?: boolean;
   accent?:  string;
@@ -23,12 +24,12 @@ function ExportBtn({ label, icon, onClick, disabled, accent = 'rgba(255,255,255,
         color: disabled ? 'rgba(255,255,255,0.25)' : '#fff',
         borderRadius: 12, padding: '11px 18px', fontSize: 12, fontWeight: 700,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        display: 'flex', alignItems: 'center', gap: 7, transition: 'all 150ms', whiteSpace: 'nowrap',
+        display: 'flex', alignItems: 'center', gap: 8, transition: 'all 150ms', whiteSpace: 'nowrap',
       }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = RED; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
     >
-      <span style={{ fontSize: 15 }}>{icon}</span>
+      {icon}
       {label}
     </button>
   );
@@ -87,12 +88,12 @@ export default function QRBulkExport({ codes, actor = 'Admin' }: Props) {
         )}
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <ExportBtn label="Export PNG"    icon="🖼️" onClick={() => notReady('PNG')}  disabled={codes.length === 0} />
-          <ExportBtn label="Export ZIP"    icon="🗜️" onClick={() => notReady('ZIP')}  disabled={codes.length === 0} />
-          <ExportBtn label="Export PDF"    icon="📄" onClick={() => notReady('PDF')}  disabled={codes.length === 0} />
-          <ExportBtn label="Export CSV"    icon="📊" onClick={handleCSV}              disabled={codes.length === 0} accent="rgba(96,165,250,0.15)" />
-          <ExportBtn label="Export Excel"  icon="📗" onClick={handleExcel}            disabled={codes.length === 0} accent="rgba(34,197,94,0.15)"  />
-          <ExportBtn label="Backup JSON"   icon="💾" onClick={handleBackup}           disabled={codes.length === 0} accent="rgba(167,139,250,0.15)"/>
+          <ExportBtn label="Export PNG"   icon={<Image size={15} strokeWidth={2} />}           onClick={() => notReady('PNG')}  disabled={codes.length === 0} />
+          <ExportBtn label="Export ZIP"   icon={<Archive size={15} strokeWidth={2} />}          onClick={() => notReady('ZIP')}  disabled={codes.length === 0} />
+          <ExportBtn label="Export PDF"   icon={<FileText size={15} strokeWidth={2} />}         onClick={() => notReady('PDF')}  disabled={codes.length === 0} />
+          <ExportBtn label="Export CSV"   icon={<Table2 size={15} strokeWidth={2} />}           onClick={handleCSV}              disabled={codes.length === 0} accent="rgba(96,165,250,0.15)" />
+          <ExportBtn label="Export Excel" icon={<FileSpreadsheet size={15} strokeWidth={2} />}  onClick={handleExcel}            disabled={codes.length === 0} accent="rgba(34,197,94,0.15)"  />
+          <ExportBtn label="Backup JSON"  icon={<HardDrive size={15} strokeWidth={2} />}        onClick={handleBackup}           disabled={codes.length === 0} accent="rgba(167,139,250,0.15)"/>
         </div>
 
         <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', margin: '12px 0 0' }}>

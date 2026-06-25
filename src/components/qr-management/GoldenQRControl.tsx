@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
+import { ShieldCheck, PauseCircle, PlayCircle, Ban, Plus } from 'lucide-react';
 import { controlGoldenQR, createUnlimitedGoldenQR } from '../../services/qr/qrManagementService';
 
 const RED = '#D71920';
 
 interface ActionBtnProps {
-  label: string;
-  icon: string;
+  label:   string;
+  icon:    React.ReactNode;
   onClick: () => void;
-  color: string;
+  color:   string;
   loading: boolean;
 }
 
@@ -17,22 +18,17 @@ function ActionBtn({ label, icon, onClick, color, loading }: ActionBtnProps) {
       onClick={onClick}
       disabled={loading}
       style={{
-        background: `${color}22`,
-        border: `1.5px solid ${color}55`,
+        background: `${color}22`, border: `1.5px solid ${color}55`,
         color: loading ? `${color}66` : color,
-        borderRadius: 12,
-        padding: '12px 20px',
-        fontSize: 13,
-        fontWeight: 700,
+        borderRadius: 12, padding: '12px 20px', fontSize: 13, fontWeight: 700,
         cursor: loading ? 'not-allowed' : 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        transition: 'all 150ms',
-        whiteSpace: 'nowrap',
+        display: 'flex', alignItems: 'center', gap: 8,
+        transition: 'all 150ms', whiteSpace: 'nowrap',
       }}
     >
-      <span style={{ fontSize: 16 }}>{icon}</span>
+      {loading
+        ? <span style={{ width: 14, height: 14, border: `2px solid ${color}44`, borderTopColor: color, borderRadius: '50%', animation: 'gqspin 0.7s linear infinite', display: 'inline-block' }} />
+        : icon}
       {loading ? '…' : label}
     </button>
   );
@@ -92,7 +88,7 @@ export default function GoldenQRControl({ onRefresh }: Props) {
 
       <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 18, padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <span style={{ fontSize: 22 }}>⭐</span>
+          <ShieldCheck size={22} color="#f59e0b" strokeWidth={2} />
           <div>
             <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>Golden QR Management</div>
             <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, marginTop: 2 }}>
@@ -116,7 +112,7 @@ export default function GoldenQRControl({ onRefresh }: Props) {
               display: 'flex', alignItems: 'center', gap: 8,
             }}
           >
-            <span>✨</span> Create Unlimited QR
+            <Plus size={15} strokeWidth={2.5} /> Create Unlimited QR
           </button>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -154,11 +150,12 @@ export default function GoldenQRControl({ onRefresh }: Props) {
 
         {/* Bulk actions */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <ActionBtn label="Pause All"   icon="⏸️" onClick={() => run('pause')}   color="#f59e0b" loading={action === 'pause'}   />
-          <ActionBtn label="Resume All"  icon="▶️" onClick={() => run('resume')}  color="#22c55e" loading={action === 'resume'}  />
-          <ActionBtn label="Disable All" icon="🚫" onClick={() => run('disable')} color="#ef4444" loading={action === 'disable'} />
+          <ActionBtn label="Pause All"   icon={<PauseCircle size={16} strokeWidth={2} />} onClick={() => run('pause')}   color="#f59e0b" loading={action === 'pause'}   />
+          <ActionBtn label="Resume All"  icon={<PlayCircle  size={16} strokeWidth={2} />} onClick={() => run('resume')}  color="#22c55e" loading={action === 'resume'}  />
+          <ActionBtn label="Disable All" icon={<Ban         size={16} strokeWidth={2} />} onClick={() => run('disable')} color="#ef4444" loading={action === 'disable'} />
         </div>
       </div>
     </section>
   );
 }
+

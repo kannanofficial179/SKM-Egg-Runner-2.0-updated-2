@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import QRCode from 'qrcode';
+import { Plus, Download, CheckCircle2, XCircle } from 'lucide-react';
 import type { QRCodeType, QRGeneratorForm } from '../../types/qr/qrManagementTypes';
 import { generateQRCodes } from '../../services/qr/qrManagementService';
 
@@ -213,8 +214,8 @@ export default function QRGenerator({ onGenerated }: Props) {
         </div>
 
         {error && (
-          <p style={{ color: '#f87171', fontSize: 12, margin: '0 0 12px', fontWeight: 600 }}>
-            ✕ {error}
+          <p style={{ color: '#f87171', fontSize: 12, margin: '0 0 12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <XCircle size={14} strokeWidth={2} /> {error}
           </p>
         )}
 
@@ -230,12 +231,10 @@ export default function QRGenerator({ onGenerated }: Props) {
             transition: 'all 150ms', display: 'flex', alignItems: 'center', gap: 8,
           }}
         >
-          {loading && (
-            <span style={{
-              width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)',
-              borderTopColor: '#fff', borderRadius: '50%',
-              animation: 'qrSpin 0.7s linear infinite', display: 'inline-block',
-            }} />
+          {loading ? (
+            <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'qrSpin 0.7s linear infinite', display: 'inline-block' }} />
+          ) : (
+            <Plus size={16} strokeWidth={2.5} />
           )}
           {loading ? 'Generating…' : 'Generate QR'}
         </button>
@@ -246,8 +245,8 @@ export default function QRGenerator({ onGenerated }: Props) {
           <div style={{ marginTop: 20 }}>
             {/* Header row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>
-                ✓ {previews.length} QR code{previews.length !== 1 ? 's' : ''} ready
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CheckCircle2 size={14} strokeWidth={2} /> {previews.length} QR code{previews.length !== 1 ? 's' : ''} ready
               </span>
               {previews.length > 1 && (
                 <button
@@ -256,9 +255,10 @@ export default function QRGenerator({ onGenerated }: Props) {
                     background: 'rgba(96,165,250,0.15)', border: '1.5px solid rgba(96,165,250,0.4)',
                     color: '#60a5fa', borderRadius: 10, padding: '7px 16px',
                     fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
                   }}
                 >
-                  ↓ Download All PNG
+                  <Download size={13} strokeWidth={2} /> Download All PNG
                 </button>
               )}
             </div>
@@ -288,10 +288,10 @@ export default function QRGenerator({ onGenerated }: Props) {
                         : `linear-gradient(135deg,${RED},#8B0000)`,
                       color: '#fff', border: 'none',
                       fontSize: 11, fontWeight: 800, cursor: 'pointer',
-                      letterSpacing: 0.5,
+                      letterSpacing: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                     }}
                   >
-                    ↓ Download PNG
+                    <Download size={12} strokeWidth={2.5} /> Download PNG
                   </button>
                 </div>
               ))}

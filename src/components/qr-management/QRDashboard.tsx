@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+  QrCode, CheckCircle2, Ban, PackageOpen, ShieldCheck, Code2,
+  ScanLine, BarChart2, TrendingUp, AlertTriangle, Circle,
+} from 'lucide-react';
 import type { QRDashboardStats } from '../../types/qr/qrManagementTypes';
 
 const RED = '#D71920';
@@ -6,7 +10,7 @@ const RED = '#D71920';
 interface StatCardProps {
   label:   string;
   value:   number | string;
-  icon:    string;
+  icon:    React.ReactNode;
   accent?: string;
   sub?:    string;
 }
@@ -22,7 +26,8 @@ function StatCard({ label, value, icon, accent = RED, sub }: StatCardProps) {
       <div style={{
         width: 36, height: 36, borderRadius: 10,
         background: `${accent}22`, border: `1px solid ${accent}44`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: accent,
       }}>{icon}</div>
       <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', lineHeight: 1 }}>
         {value}
@@ -45,18 +50,18 @@ interface Props {
 
 export default function QRDashboard({ stats, loading, error }: Props) {
   const primaryCards = [
-    { label: 'Total Generated',  value: stats.totalGenerated,   icon: '🔢', accent: '#6366f1' },
-    { label: 'Active QR',        value: stats.activeQR,         icon: '✅', accent: '#22c55e' },
-    { label: 'Disabled QR',      value: stats.disabledQR,       icon: '🚫', accent: '#ef4444' },
-    { label: 'Unused QR',        value: stats.unusedQR,         icon: '🆕', accent: '#64748b' },
-    { label: 'Golden QR',        value: stats.goldenQR,         icon: '⭐', accent: '#f59e0b' },
-    { label: 'Developer QR',     value: stats.developerQR,      icon: '🛠️', accent: '#818cf8' },
+    { label: 'Total Generated',  value: stats.totalGenerated,  icon: <QrCode size={18} strokeWidth={2} />,      accent: '#6366f1' },
+    { label: 'Active QR',        value: stats.activeQR,        icon: <CheckCircle2 size={18} strokeWidth={2} />, accent: '#22c55e' },
+    { label: 'Disabled QR',      value: stats.disabledQR,      icon: <Ban size={18} strokeWidth={2} />,          accent: '#ef4444' },
+    { label: 'Unused QR',        value: stats.unusedQR,        icon: <PackageOpen size={18} strokeWidth={2} />,  accent: '#64748b' },
+    { label: 'Golden QR',        value: stats.goldenQR,        icon: <ShieldCheck size={18} strokeWidth={2} />,  accent: '#f59e0b' },
+    { label: 'Developer QR',     value: stats.developerQR,     icon: <Code2 size={18} strokeWidth={2} />,        accent: '#818cf8' },
   ];
 
   const scanCards = [
-    { label: 'Scanned Today',      value: stats.scannedToday,       icon: '📡', accent: RED,       sub: 'real-time' },
-    { label: 'Scanned This Week',  value: stats.scannedThisWeek,    icon: '📊', accent: '#06b6d4', sub: 'last 7 days' },
-    { label: 'Scanned This Month', value: stats.scannedThisMonth,   icon: '📈', accent: '#8b5cf6', sub: 'last 30 days' },
+    { label: 'Scanned Today',      value: stats.scannedToday,      icon: <ScanLine size={18} strokeWidth={2} />,    accent: RED,       sub: 'real-time' },
+    { label: 'Scanned This Week',  value: stats.scannedThisWeek,   icon: <BarChart2 size={18} strokeWidth={2} />,   accent: '#06b6d4', sub: 'last 7 days' },
+    { label: 'Scanned This Month', value: stats.scannedThisMonth,  icon: <TrendingUp size={18} strokeWidth={2} />,  accent: '#8b5cf6', sub: 'last 30 days' },
   ];
 
   return (
@@ -66,8 +71,8 @@ export default function QRDashboard({ stats, loading, error }: Props) {
           Dashboard
         </h2>
         {stats.lastSync && !loading && (
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', fontWeight: 600 }}>
-            🟢 Live · synced {stats.lastSync}
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Circle size={7} fill="#22c55e" color="#22c55e" /> Live · synced {stats.lastSync}
           </span>
         )}
       </div>
@@ -78,7 +83,7 @@ export default function QRDashboard({ stats, loading, error }: Props) {
           borderRadius: 12, padding: '10px 14px', marginBottom: 12,
           display: 'flex', alignItems: 'flex-start', gap: 8,
         }}>
-          <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
+          <AlertTriangle size={16} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
             <p style={{ color: '#f87171', fontSize: 12, fontWeight: 700, margin: 0 }}>Load Error</p>
             <p style={{ color: 'rgba(248,113,113,0.7)', fontSize: 11, margin: '2px 0 0', fontFamily: 'monospace' }}>{error}</p>
@@ -112,7 +117,7 @@ export default function QRDashboard({ stats, loading, error }: Props) {
             borderRadius: 14, padding: '10px 14px', marginBottom: 10,
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
-            <span style={{ fontSize: 13 }}>📡</span>
+            <ScanLine size={14} color="rgba(255,255,255,0.4)" />
             <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>
               Scan Counts — sourced from <code style={{ fontFamily: 'monospace', color: RED }}>dailyScans</code> field in qrCodes
             </span>

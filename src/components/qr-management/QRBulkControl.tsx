@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  Trash2, CheckCircle2, AlertTriangle, PauseCircle, PlayCircle,
+  HardDrive, ShieldCheck, Code2, Package, Trash,
+} from 'lucide-react';
+import {
   bulkSetActiveByType,
   bulkDeleteByIds,
   exportBackupJSON,
@@ -54,7 +58,7 @@ function ConfirmDialog({
           width: 48, height: 48, borderRadius: 14, marginBottom: 16,
           background: 'rgba(239,68,68,0.15)', border: `1px solid ${DANGER}44`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
-        }}>🗑️</div>
+        }}><Trash2 size={22} strokeWidth={2} color={DANGER} /></div>
         <h3 style={{ color: '#fff', fontSize: 17, fontWeight: 900, margin: '0 0 8px' }}>
           Delete {count} QR Code{count !== 1 ? 's' : ''}?
         </h3>
@@ -114,7 +118,7 @@ function SuccessScreen({
           width: 56, height: 56, borderRadius: '50%', margin: '0 auto 18px',
           background: `rgba(34,197,94,0.15)`, border: `1px solid ${SAFE}44`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
-        }}>✅</div>
+        }}><CheckCircle2 size={26} strokeWidth={2} color={SAFE} /></div>
         <h3 style={{ color: SAFE, fontSize: 18, fontWeight: 900, margin: '0 0 8px' }}>
           {deletedCount} QR Code{deletedCount !== 1 ? 's' : ''} Deleted
         </h3>
@@ -315,7 +319,7 @@ function DeleteCenterModal({ onClose, onRefresh, actor }: DeleteCenterProps) {
                   width: 36, height: 36, borderRadius: 10,
                   background: 'rgba(239,68,68,0.15)', border: `1px solid ${DANGER}33`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-                }}>🗑️</div>
+                }}><Trash2 size={18} strokeWidth={2} color={DANGER} /></div>
                 <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 900, margin: 0 }}>Delete QR Codes</h2>
               </div>
               <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, margin: 0 }}>
@@ -479,7 +483,7 @@ function DeleteCenterModal({ onClose, onRefresh, actor }: DeleteCenterProps) {
               >
                 {deleting
                   ? <><div style={{ width: 13, height: 13, border: `2px solid rgba(255,255,255,0.3)`, borderTopColor: '#fff', borderRadius: '50%', animation: 'bcspin 0.7s linear infinite' }} /> Deleting...</>
-                  : <><span>🗑️</span> Delete Selected</>
+                  : <><Trash size={14} strokeWidth={2} /> Delete Selected</>
                 }
               </button>
             </div>
@@ -516,7 +520,7 @@ type BtnVariant = 'danger' | 'warn' | 'safe' | 'ghost';
 function ActionBtn({
   label, icon, variant, onClick, loading,
 }: {
-  label: string; icon: string; variant: BtnVariant; onClick: () => void; loading: boolean;
+  label: string; icon: React.ReactNode; variant: BtnVariant; onClick: () => void; loading: boolean;
 }) {
   const colors: Record<BtnVariant, { bg: string; border: string; color: string }> = {
     danger: { bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.35)',  color: DANGER },
@@ -534,7 +538,7 @@ function ActionBtn({
     }}>
       {loading
         ? <span style={{ width: 12, height: 12, border: `2px solid ${c.color}44`, borderTopColor: c.color, borderRadius: '50%', animation: 'bcspin 0.7s linear infinite', display: 'inline-block' }} />
-        : <span style={{ fontSize: 14 }}>{icon}</span>}
+        : icon}
       {label}
     </button>
   );
@@ -545,7 +549,7 @@ function ActionBtn({
 interface GroupProps {
   typeName:  QRCodeType;
   label:     string;
-  icon:      string;
+  icon:      React.ReactNode;
   color:     string;
   onRefresh: () => void;
   actor:     string;
@@ -585,15 +589,15 @@ function TypeGroup({ typeName, label, icon, color, onRefresh, actor }: GroupProp
         borderRadius: 14, padding: '16px 18px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 18 }}>{icon}</span>
+          <span style={{ display: 'flex', color }}>{icon}</span>
           <span style={{ color, fontSize: 13, fontWeight: 800 }}>{label} QR</span>
           <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1, textTransform: 'uppercase',
             padding: '2px 8px', borderRadius: 20, background: `${color}18`, color }}>BULK</span>
         </div>
         {msg && <p style={{ fontSize: 11, fontWeight: 700, color: isOk ? SAFE : DANGER, margin: '0 0 10px' }}>{msg}</p>}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <ActionBtn label="Disable All" icon="⏸" variant="warn" onClick={handleDisable} loading={busy === 'disable'} />
-          <ActionBtn label="Enable All"  icon="▶" variant="safe" onClick={handleEnable}  loading={busy === 'enable'}  />
+          <ActionBtn label="Disable All" icon={<PauseCircle size={15} strokeWidth={2} />} variant="warn" onClick={handleDisable} loading={busy === 'disable'} />
+          <ActionBtn label="Enable All"  icon={<PlayCircle  size={15} strokeWidth={2} />} variant="safe" onClick={handleEnable}  loading={busy === 'enable'}  />
         </div>
       </div>
 
@@ -607,7 +611,7 @@ function TypeGroup({ typeName, label, icon, color, onRefresh, actor }: GroupProp
             background: '#111', border: `1.5px solid ${WARN}44`,
             borderRadius: 20, padding: 28, maxWidth: 360, width: '100%',
           }}>
-            <div style={{ fontSize: 24, marginBottom: 12 }}>⚠️</div>
+            <AlertTriangle size={24} color={WARN} style={{ marginBottom: 12 }} />
             <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 900, margin: '0 0 8px' }}>Disable All {label}</h3>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, margin: '0 0 20px', lineHeight: 1.6 }}>
               Set active=false on every {label} QR code. You can re-enable them at any time.
@@ -686,7 +690,7 @@ export default function QRBulkControl({ onRefresh, actor }: Props) {
             background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
             borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <span style={{ fontSize: 16 }}>⚠️</span>
+            <AlertTriangle size={16} color="#f87171" style={{ flexShrink: 0 }} />
             <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, margin: 0, lineHeight: 1.5 }}>
               Bulk operations affect all matching QR codes immediately. Always export a backup before deleting.
             </p>
@@ -694,7 +698,7 @@ export default function QRBulkControl({ onRefresh, actor }: Props) {
 
           {/* Backup + Delete Center */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <ActionBtn label="Export Backup JSON" icon="💾" variant="ghost" onClick={handleBackup} loading={backing} />
+            <ActionBtn label="Export Backup JSON" icon={<HardDrive size={15} strokeWidth={2} />} variant="ghost" onClick={handleBackup} loading={backing} />
             <button
               onClick={() => setShowDeleteCenter(true)}
               style={{
@@ -704,14 +708,14 @@ export default function QRBulkControl({ onRefresh, actor }: Props) {
                 display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap',
               }}
             >
-              <span style={{ fontSize: 14 }}>🗑️</span> Delete Center
+              <Trash2 size={14} strokeWidth={2} /> Delete Center
             </button>
             {backupMsg && <span style={{ fontSize: 11, color: SAFE, fontWeight: 700 }}>{backupMsg}</span>}
           </div>
 
           {/* Enable / Disable groups */}
-          <TypeGroup typeName="Regular" label="Regular" icon="▦" color="rgba(255,255,255,0.7)" onRefresh={onRefresh} actor={actor} />
-          <TypeGroup typeName="Golden"  label="Golden"  icon="⭐" color={WARN}                  onRefresh={onRefresh} actor={actor} />
+          <TypeGroup typeName="Regular" label="Regular" icon={<Package      size={18} strokeWidth={2} />} color="rgba(255,255,255,0.7)" onRefresh={onRefresh} actor={actor} />
+          <TypeGroup typeName="Golden"  label="Golden"  icon={<ShieldCheck  size={18} strokeWidth={2} />} color={WARN}                  onRefresh={onRefresh} actor={actor} />
         </div>
       </section>
 

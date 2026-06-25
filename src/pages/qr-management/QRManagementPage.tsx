@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { QrCode, RefreshCw, ArrowLeft } from 'lucide-react';
 import { subscribeDashboardStats, fetchAllQRCodes, EMPTY_STATS } from '../../services/qr/qrManagementService';
 import type { QRDashboardStats, QRCodeRecord } from '../../types/qr/qrManagementTypes';
 import { useAuth } from '../../auth/AuthProvider';
@@ -95,13 +96,13 @@ export default function QRManagementPage({ onBack }: Props) {
             cursor: 'pointer', flexShrink: 0, fontSize: 16, transition: 'all 150ms',
           }}
           aria-label="Back"
-        >←</button>
+        ><ArrowLeft size={18} strokeWidth={2} /></button>
 
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
           background: `${RED}22`, border: `1px solid ${RED}44`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-        }}>▦</div>
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: RED,
+        }}><QrCode size={18} strokeWidth={2} /></div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: 17, fontWeight: 900, color: '#fff', margin: 0, letterSpacing: '-0.3px', lineHeight: 1.2 }}>
@@ -126,11 +127,10 @@ export default function QRManagementPage({ onBack }: Props) {
             color: loadingStats ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
             borderRadius: 10, width: 36, height: 36,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: loadingStats ? 'not-allowed' : 'pointer', fontSize: 15,
-            animation: loadingStats ? 'spin 1s linear infinite' : 'none',
+            cursor: loadingStats ? 'not-allowed' : 'pointer',
           }}
           aria-label="Refresh"
-        >↻</button>
+        ><RefreshCw size={16} strokeWidth={2} style={{ animation: loadingStats ? 'spin 1s linear infinite' : 'none' }} /></button>
       </div>
 
       {/* ── Page Content ── */}

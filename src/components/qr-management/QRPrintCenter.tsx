@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import QRCode from 'qrcode';
+import { Printer } from 'lucide-react';
 import type { QRCodeRecord } from '../../types/qr/qrManagementTypes';
 import { writeOpLog } from '../../services/qr/qrManagementService';
 
@@ -207,7 +208,7 @@ export default function QRPrintCenter({ codes, actor }: Props) {
               animation: 'pcspin 0.7s linear infinite', display: 'inline-block',
             }} />
           )}
-          {printing ? 'Generating…' : '🖨 Print All QR'}
+          {printing ? 'Generating…' : <><Printer size={15} strokeWidth={2} /> Print All QR</>}
         </button>
 
         <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', margin: '10px 0 0', lineHeight: 1.6 }}>
