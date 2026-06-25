@@ -34,6 +34,7 @@ import {
 } from './frontend';
 import { syncConfigWithServer, addDebugLog, getActiveLiveConfig } from './liveConfig';
 import { saveRunStats } from './services/game/gameStatsService';
+import { consumeOnePlay } from './services/qr/qrService';
 
 // Storage keys are scoped per Firebase UID so each account has isolated data.
 // getUid() is resolved inside App() where useAuth() is available.
@@ -143,14 +144,14 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
   // Navigation Panel States
   const [gameState, setGameState] = useState<'MENU' | 'PLAYING' | 'PAUSED' | 'GAMEOVER'>('MENU');
 
-  // QR Play Session — persisted in sessionStorage so page refresh keeps state
-  // unlimited: true means Golden QR — no play count limit, no decrement
+  // QR Play Session — tracks whether a valid QR has been scanned this session.
+  // remainingAttempts is kept for UI display only; Firestore playCount is the
+  // authoritative gate. consumeOnePlay() is called at every game start.
   const [playSession, setPlaySession] = useState<{ remainingAttempts: number; unlimited?: boolean } | null>(() => {
     try {
       const saved = sessionStorage.getItem('skm_play_session');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Re-attach unlimited flag from Golden QR marker if present
         if (sessionStorage.getItem('skm_golden_qr') === 'true') {
           parsed.unlimited = true;
         }
@@ -166,6 +167,8 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
     else {
       sessionStorage.removeItem('skm_play_session');
       sessionStorage.removeItem('skm_golden_qr');
+      sessionStorage.removeItem('skm_qr_code');
+      sessionStorage.removeItem('skm_qr_validated_at');
     }
   };
   
@@ -582,16 +585,30 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
     setGameState('PLAYING');
   };
 
-  const handleRestart = () => {
+  const handleRestart = async () => {
     if (playSession?.unlimited) {
-      // Golden QR — unlimited retry, no checks needed
-      console.log('[RETRY] Golden QR bypass active — starting new run');
+      console.log('[RETRY] Golden QR — unlimited, no Firestore consume');
       handleStartGame();
-    } else if (playSession && playSession.remainingAttempts > 0) {
-      console.log('[RETRY] Normal QR play count check — remaining:', playSession.remainingAttempts);
+      return;
+    }
+
+    const qrCode = sessionStorage.getItem('skm_qr_code');
+    if (!qrCode) {
+      console.warn('[RETRY] No QR code in session — returning to menu');
+      if (engineRef.current) engineRef.current.resetToShowcase();
+      updateSession(null);
+      setGameState('MENU');
+      return;
+    }
+
+    // Consume one play from Firestore — blocks if all plays are used
+    const result = await consumeOnePlay(qrCode);
+    if (result.ok) {
+      console.log('[RETRY] Play consumed — remaining:', result.remaining);
+      updateSession({ remainingAttempts: result.remaining });
       handleStartGame();
     } else {
-      console.log('[RETRY] No remaining attempts — returning to menu');
+      console.warn('[RETRY] Blocked by Firestore:', result.reason, result.message);
       if (engineRef.current) engineRef.current.resetToShowcase();
       updateSession(null);
       setGameState('MENU');
@@ -612,9 +629,9 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
 
   // Run over crashes
   const handleRunGameOver = () => {
-    // Read directly from sessionStorage to avoid stale closure —
-    // the engine's onCrash callback is created once and captures the
-    // initial playSession value (null), so we must read fresh state here.
+    // playCount is consumed at the START of each play (consumeOnePlay in
+    // handleRestart / onStartGame). Nothing to decrement here — just show
+    // the game over screen. The retry button will call consumeOnePlay again.
     const isGolden = sessionStorage.getItem('skm_golden_qr') === 'true';
     let savedSession: { remainingAttempts: number; unlimited?: boolean } | null = null;
     try {
@@ -622,15 +639,12 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
       if (raw) savedSession = JSON.parse(raw);
     } catch { /* ignore */ }
 
-    let next: { remainingAttempts: number; unlimited?: boolean } | null;
+    // Preserve current session as-is for the game over screen display
     if (isGolden) {
-      next = { remainingAttempts: 999, unlimited: true };
-      console.log('[RETRY] Golden QR bypass active — play count not decremented');
+      updateSession({ remainingAttempts: 999, unlimited: true });
     } else {
-      next = savedSession ? { remainingAttempts: Math.max(0, savedSession.remainingAttempts - 1) } : null;
-      console.log('[RETRY] Normal QR play count check — remaining after this run:', next?.remainingAttempts ?? 0);
+      updateSession(savedSession);
     }
-    updateSession(next);
     setGameState('GAMEOVER');
     
     // Core RANDOM EGG REWARD SYSTEM values determination
@@ -762,10 +776,11 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
     }
   };
 
-  // Resurrect / continue by spending 3 gems
+  // Resurrect / continue by spending 3 gems — does NOT consume a QR play.
+  // The play was already consumed at run start; this just resumes the same run.
   const handleContinueWithGems = () => {
     if (stats.totalGems < 3) return;
-    if (!playSession || playSession.remainingAttempts <= 0) return;
+    if (!playSession) return;
 
     soundManager.playLevelUp();
     
@@ -919,36 +934,47 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
       {gameState === 'MENU' && (
         <MainMenu
           stats={stats}
-          onStartGame={() => {
-            const isGolden      = sessionStorage.getItem('skm_golden_qr')       === 'true';
-            const remainingRaw  = sessionStorage.getItem('skm_qr_remaining');
-            const validatedAtRaw= sessionStorage.getItem('skm_qr_validated_at');
+          onStartGame={async () => {
+            const qrCode         = sessionStorage.getItem('skm_qr_code');
+            const isGolden       = sessionStorage.getItem('skm_golden_qr') === 'true';
+            const validatedAtRaw = sessionStorage.getItem('skm_qr_validated_at');
 
-            // Anti-refresh guard: if the validated session is older than 30 minutes,
-            // treat it as expired and block entry without a new QR scan.
+            // No QR scanned this session — send back to scan
+            if (!qrCode && !isGolden) {
+              console.warn('[QR] No QR code in session — require scan');
+              updateSession(null);
+              return;
+            }
+
+            // Anti-refresh guard: scan timestamp older than 30 min requires re-scan
             const SESSION_TTL_MS = 30 * 60 * 1000;
             const validatedAt    = validatedAtRaw ? Number(validatedAtRaw) : 0;
-            const sessionAge     = Date.now() - validatedAt;
-
-            if (!isGolden && sessionAge > SESSION_TTL_MS) {
-              console.warn('[QR] Validated session expired — require new QR scan');
+            if (!isGolden && Date.now() - validatedAt > SESSION_TTL_MS) {
+              console.warn('[QR] Session expired — require new QR scan');
               updateSession(null);
-              sessionStorage.removeItem('skm_qr_remaining');
-              sessionStorage.removeItem('skm_qr_validated_at');
-              return; // block game start — user must re-scan
+              return;
             }
 
             if (isGolden) {
-              console.log('[QR] Golden QR — unlimited retry enabled');
+              console.log('[QR] Golden QR — unlimited, skipping Firestore consume');
               updateSession({ remainingAttempts: 999, unlimited: true });
-            } else {
-              // Business rule: 1 QR scan = 2 play attempts.
-              // The Firestore transaction consumed 1 QR use at scan time.
-              // The player now gets 2 consecutive runs before needing a new QR.
-              console.log('[QR] Normal QR — 2 runs granted | QR remaining uses:', remainingRaw ?? '0');
-              updateSession({ remainingAttempts: 2 });
+              handleStartGame();
+              return;
             }
-            handleStartGame();
+
+            // Consume one play from Firestore — this is the authoritative gate
+            const result = await consumeOnePlay(qrCode!);
+
+            if (result.ok) {
+              console.log('[QR] Play consumed — remaining:', result.remaining);
+              updateSession({ remainingAttempts: result.remaining });
+              handleStartGame();
+            } else {
+              console.warn('[QR] consumeOnePlay blocked:', result.reason, result.message);
+              // All plays used — clear session so user sees the scan screen
+              updateSession(null);
+              // The MENU will show no active session; user must scan a new QR
+            }
           }}
           onOpenShop={() => setIsShopOpen(true)}
           onOpenMissions={() => setIsMissionsOpen(true)}

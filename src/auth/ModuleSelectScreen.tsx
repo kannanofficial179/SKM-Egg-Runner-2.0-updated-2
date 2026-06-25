@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Html5Qrcode } from 'html5-qrcode';
-import { validateAndUseQR } from '../services/qr/qrService';
+import { validateQR } from '../services/qr/qrService';
 import { SettingsModal } from '../frontend/modals/SettingsModal';
 
 interface ModuleSelectScreenProps {
@@ -288,9 +288,9 @@ function QRAccessModal({
           setScanMsg('Validating…');
           setScanError(null);
 
-          let result: Awaited<ReturnType<typeof validateAndUseQR>>;
+          let result: Awaited<ReturnType<typeof validateQR>>;
           try {
-            result = await validateAndUseQR(decoded);
+            result = await validateQR(decoded);
           } catch {
             handledRef.current = false;
             setScanError('Validation Timeout. Please try again.');
@@ -300,16 +300,9 @@ function QRAccessModal({
           }
 
           if (result.ok === true) {
-            // Store the exact remaining count returned by the committed transaction.
-            // App.tsx reads this value — never hardcode it there.
-            if (result.unlimited) {
-              sessionStorage.setItem('skm_golden_qr', 'true');
-              sessionStorage.setItem('skm_qr_remaining', '999');
-            } else {
-              sessionStorage.removeItem('skm_golden_qr');
-              sessionStorage.setItem('skm_qr_remaining', String(result.remaining));
-            }
-            // Timestamp lets App.tsx detect page-refresh reuse of an old session
+            // validateQR already stored skm_qr_code in sessionStorage.
+            // Golden QR flag is also set there by validateQR.
+            // consumeOnePlay (called at each game start) is the authoritative gate.
             sessionStorage.setItem('skm_qr_validated_at', String(Date.now()));
 
             setScanSuccess(true);
@@ -317,9 +310,8 @@ function QRAccessModal({
             setScanMsg(
               result.unlimited
                 ? '✓ Access Granted — Unlimited Play!'
-                : `✓ Access Granted — ${result.remaining + 1} play${result.remaining + 1 !== 1 ? 's' : ''} awarded`,
+                : `✓ Access Granted — ${result.remaining} play${result.remaining !== 1 ? 's' : ''} available`,
             );
-            // Navigate after 1 second — don't call closeWith (avoids double-stopScanner hang)
             setTimeout(() => onConfirm(), 1000);
           } else {
             handledRef.current = false;
@@ -327,7 +319,7 @@ function QRAccessModal({
             setScanMsg('');
             setScanError(
               result.reason === 'LIMIT_REACHED'
-                ? 'QR Usage Limit Reached. This QR has been fully used.'
+                ? 'This QR code has already been fully used.\nPlease scan a new QR code.'
                 : result.reason === 'INACTIVE'
                 ? 'QR Invalid. This code has been disabled.'
                 : result.message,

@@ -4,19 +4,24 @@
  * Firestore collection: qrCodes/{code}
  * Document fields:
  *   code:      string   — e.g. "EGG-0001"
- *   maxPlays:  number   — how many total game sessions this QR allows (default 2)
- *   playCount: number   — how many times it has already been used
- *   active:    boolean  — false = permanently disabled regardless of count
+ *   maxPlays:  number   — total plays allowed (default 2)
+ *   playCount: number   — plays consumed so far; incremented once per play start
+ *   active:    boolean  — false = permanently disabled
  *   createdAt: Timestamp
  *
- * Race-condition safety:
- *   validateAndUseQR uses a Firestore transaction for atomic read-check-increment.
- *   The timeout promise is NOT raced against the transaction — instead the timeout
- *   only cancels waiting if Firestore itself hangs. The transaction is always
- *   awaited to completion so a background commit can never ghost-increment.
+ * Business rule: 1 QR = maxPlays TOTAL PLAYS (not scans).
  *
- *   An in-process lock (scanInFlight) prevents the same device from sending two
- *   concurrent scan requests for the same code within 10 seconds.
+ *   validateQR(rawCode)
+ *     Called at scan time. Read-only — never increments playCount.
+ *     Checks active + playCount < maxPlays. Stores the resolved code in
+ *     sessionStorage ('skm_qr_code') so the game can consume it later.
+ *
+ *   consumeOnePlay(rawCode)
+ *     Called every time a game run starts (including retries).
+ *     Atomically reads playCount, blocks if >= maxPlays, otherwise
+ *     increments by 1 and returns the remaining count.
+ *     This is the authoritative gate — sessionStorage is never the source
+ *     of truth for play allowance.
  */
 
 import { doc, getDoc, runTransaction } from 'firebase/firestore';
@@ -32,10 +37,6 @@ export type QRValidationResult =
 const GOLDEN_PASS_CODES = new Set(['SKM-GOLDEN-PASS']);
 
 // ── In-process cooldown lock ──────────────────────────────────────────────────
-// Key: `${uid}:${code}` or just `${code}` for game scans.
-// Prevents the same device from firing two concurrent transactions for the same
-// code within COOLDOWN_MS. This is a client-side guard only; the Firestore
-// transaction is still the authoritative check.
 const COOLDOWN_MS = 10_000;
 const scanInFlight = new Map<string, number>(); // key → expiry timestamp
 
@@ -43,7 +44,7 @@ function acquireLock(key: string): boolean {
   const now = Date.now();
   const expiry = scanInFlight.get(key);
   if (expiry && now < expiry) {
-    console.warn('[SCAN LOCK] Duplicate scan blocked within cooldown:', key);
+    console.warn('[SCAN LOCK] Duplicate blocked within cooldown:', key);
     return false;
   }
   scanInFlight.set(key, now + COOLDOWN_MS);
@@ -72,7 +73,6 @@ function extractCode(raw: string): string {
 
 // ── Protein tracker egg validation ───────────────────────────────────────────
 // READ-ONLY — does NOT increment playCount or affect game sessions.
-// Validates that the QR code is a genuine, active SKM Egg product.
 
 export type EggQRValidationResult =
   | { ok: true;  eggCode: string; isGolden: boolean }
@@ -134,141 +134,184 @@ export async function validateEggForProtein(rawCode: string): Promise<EggQRValid
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// validateQR — scan-time read-only check
+// ─────────────────────────────────────────────────────────────────────────────
 /**
- * Validates a scanned QR code against Firestore and atomically increments
- * playCount. The entire read-check-write is one Firestore transaction so
- * concurrent scans from different users are serialised server-side.
- *
- * Race-condition fixes applied:
- *  1. Promise.race with the timeout is removed. The timeout now only cancels
- *     the *await* — not the transaction itself — so a background commit can
- *     never leave a ghost increment that lets an extra scan through.
- *  2. An in-process lock blocks a second scan from the same device within
- *     COOLDOWN_MS while the first transaction is still in flight.
+ * Called when the player scans a QR code. Does NOT increment playCount.
+ * Only checks that the code exists, is active, and still has plays remaining.
+ * On success, stores the resolved code in sessionStorage for consumeOnePlay.
  */
-export async function validateAndUseQR(rawCode: string): Promise<QRValidationResult> {
-  console.log('[SCAN RECEIVED]', rawCode);
+export async function validateQR(rawCode: string): Promise<QRValidationResult> {
+  console.log('[QR SCAN] raw input:', rawCode.slice(0, 80));
 
   const code = extractCode(rawCode);
   console.log('[QR ID]', code);
 
   if (GOLDEN_PASS_CODES.has(code)) {
-    console.log('[QR] GOLDEN PASS detected — unlimited access granted');
-    return { ok: true, remaining: -1, unlimited: true };
+    console.log('[QR] GOLDEN PASS detected — unlimited access');
+    sessionStorage.setItem('skm_qr_code', code);
+    sessionStorage.setItem('skm_golden_qr', 'true');
+    return { ok: true, remaining: 999, unlimited: true };
   }
 
-  // ── Client-side cooldown lock ─────────────────────────────────────────────
-  const lockKey = `game:${code}`;
-  if (!acquireLock(lockKey)) {
-    return {
-      ok:      false,
-      reason:  'ERROR',
-      message: 'Scan in progress. Please wait a moment before scanning again.',
-    };
-  }
+  sessionStorage.removeItem('skm_golden_qr');
 
   const ref = doc(db, COLLECTION, code);
-  console.log('[FIRESTORE QUERY START]', `qrCodes/${code}`);
+  console.log('[QR SCAN] Firestore read start →', `qrCodes/${code}`);
 
   try {
-    // ── Atomic transaction: read → check → increment ──────────────────────
-    // runTransaction retries automatically on contention (Firestore guarantees
-    // serialisation). We never race it against a timeout because that would
-    // allow a background commit to increment playCount while we return ERROR
-    // to the caller — exactly the ghost-increment race condition.
-    const result = await runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-      console.log('[FIRESTORE QUERY SUCCESS] exists=', snap.exists());
+    const snap = await getDoc(ref);
+    console.log('[QR SCAN] exists=', snap.exists());
 
-      if (!snap.exists()) {
-        console.warn(`[VALIDATION FAILED] NOT_FOUND → qrCodes/${code}`);
-        return {
-          ok:      false as const,
-          reason:  'NOT_FOUND' as const,
-          message: 'QR Invalid. Please scan a valid SKM QR code.',
-        };
-      }
+    if (!snap.exists()) {
+      console.warn('[QR SCAN] NOT_FOUND:', code);
+      return { ok: false, reason: 'NOT_FOUND', message: 'QR Invalid. Please scan a valid SKM QR code.' };
+    }
 
-      const data       = snap.data();
-      const active:    boolean = data.active    ?? true;
-      const playCount: number  = data.playCount ?? 0;
-      const maxPlays:  number  = data.maxPlays  ?? 2;
+    const data      = snap.data();
+    const active    = data.active    ?? true  as boolean;
+    const playCount = data.playCount ?? 0     as number;
+    const maxPlays  = data.maxPlays  ?? 2     as number;
 
-      console.log('[QR READ] active:', active, '| playCount:', playCount, '| maxPlays:', maxPlays);
+    console.log(`[QR SCAN] id=${code} | active=${active} | playCount=${playCount} | maxPlays=${maxPlays}`);
 
-      if (!active) {
-        console.warn('[VALIDATION FAILED] Code is inactive');
-        return {
-          ok:      false as const,
-          reason:  'INACTIVE' as const,
-          message: 'This QR code has been disabled.',
-        };
-      }
+    if (!active) {
+      console.warn('[QR SCAN] INACTIVE:', code);
+      return { ok: false, reason: 'INACTIVE', message: 'This QR code has been disabled.' };
+    }
 
-      if (playCount >= maxPlays) {
-        console.warn(`[VALIDATION FAILED] Limit reached (${playCount}/${maxPlays})`);
-        return {
-          ok:      false as const,
-          reason:  'LIMIT_REACHED' as const,
-          message: `QR Usage Limit Reached. This QR has been fully used (${playCount}/${maxPlays}).`,
-        };
-      }
+    if (playCount >= maxPlays) {
+      console.warn(`[QR SCAN] LIMIT_REACHED: ${playCount}/${maxPlays} — QR fully used`);
+      return {
+        ok:      false,
+        reason:  'LIMIT_REACHED',
+        message: 'This QR code has already been fully used.\nPlease scan a new QR code.',
+      };
+    }
 
-      // ── All checks passed — atomically commit the increment ──────────────
-      // Use plain integers (not FieldValue.increment) so Security Rules can
-      // verify request.resource.data.playCount == resource.data.playCount + 1.
-      // FieldValue.increment is a server transform invisible to rule evaluation.
-      const today        = new Date().toISOString().slice(0, 10);
-      const newPlayCount = playCount + 1;
-      const prevDailyCount: number = (data[`dailyScans`] as Record<string, number>)?.[today] ?? 0;
-      tx.update(ref, {
-        playCount:                    newPlayCount,
-        [`dailyScans.${today}`]:      prevDailyCount + 1,
-        lastScannedAt:                new Date(),
-      });
+    // Store resolved code — consumeOnePlay reads this at game start
+    sessionStorage.setItem('skm_qr_code', code);
 
-      const remaining = maxPlays - newPlayCount;
-      const unlimited = maxPlays >= 999999;
-      console.log('[PLAY COUNT COMMITTED]', newPlayCount, '/', maxPlays, '| remaining:', unlimited ? '∞' : remaining);
-
-      return { ok: true as const, remaining, unlimited: unlimited || undefined };
-    });
-
-    console.log('[SCAN RESULT]', result.ok ? 'GRANTED' : 'DENIED', result.ok ? '' : (result as any).reason);
-    return result;
+    const remaining = maxPlays - playCount;
+    console.log(`[QR SCAN] GRANTED — ${remaining} play(s) available`);
+    return { ok: true, remaining };
 
   } catch (err: any) {
     const firebaseCode: string = err?.code    ?? '';
     const rawMessage:   string = err?.message ?? String(err);
-
-    console.error('[VALIDATION ERROR]', {
-      qrCode: code, path: `qrCodes/${code}`, firebaseCode, rawMessage,
-    });
+    console.error('[QR SCAN] Firestore error:', { code, firebaseCode, rawMessage });
 
     if (firebaseCode === 'permission-denied') {
       return { ok: false, reason: 'ERROR', message: 'Scan failed — rules may not be deployed yet. Try again shortly.' };
     }
     if (firebaseCode === 'unavailable' || firebaseCode === 'deadline-exceeded') {
-      return { ok: false, reason: 'ERROR', message: 'Firebase unavailable. Please check your connection and try again.' };
+      return { ok: false, reason: 'ERROR', message: 'Firebase unavailable. Check your connection and try again.' };
     }
-    if (firebaseCode === 'not-found') {
-      return { ok: false, reason: 'NOT_FOUND', message: 'QR not found in database.' };
-    }
-
     return { ok: false, reason: 'ERROR', message: rawMessage || 'Unknown error. Please try again.' };
+  }
+}
 
-  } finally {
-    // Always release lock — whether the transaction succeeded or failed.
-    // For successful scans the lock stays in place for COOLDOWN_MS (already
-    // set by acquireLock) so rapid re-scans of the same code are blocked.
-    // For failures we release immediately so the user can retry.
+// ─────────────────────────────────────────────────────────────────────────────
+// consumeOnePlay — called at every game start (including retries)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Atomically increments playCount by 1 in Firestore.
+ * Called at game start AND on every retry — Firestore is the source of truth.
+ * Blocks if playCount >= maxPlays (QR exhausted).
+ *
+ * Returns remaining plays AFTER this consumption (0 means this was the last one).
+ */
+export async function consumeOnePlay(rawCode: string): Promise<QRValidationResult> {
+  const code = extractCode(rawCode);
+  console.log('[QR PLAY] consumeOnePlay →', code);
+
+  if (GOLDEN_PASS_CODES.has(code)) {
+    console.log('[QR PLAY] GOLDEN PASS — unlimited, no increment');
+    return { ok: true, remaining: 999, unlimited: true };
+  }
+
+  const lockKey = `play:${code}`;
+  if (!acquireLock(lockKey)) {
+    return { ok: false, reason: 'ERROR', message: 'Play already in progress. Please wait a moment.' };
+  }
+
+  const ref = doc(db, COLLECTION, code);
+
+  try {
+    const result = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+
+      if (!snap.exists()) {
+        console.warn('[QR PLAY] NOT_FOUND:', code);
+        return { ok: false as const, reason: 'NOT_FOUND' as const, message: 'QR not found. Please scan again.' };
+      }
+
+      const data      = snap.data();
+      const active    = data.active    ?? true  as boolean;
+      const playCount = data.playCount ?? 0     as number;
+      const maxPlays  = data.maxPlays  ?? 2     as number;
+
+      console.log(`[QR PLAY] id=${code} | active=${active} | playCount=${playCount} | maxPlays=${maxPlays}`);
+
+      if (!active) {
+        console.warn('[QR PLAY] INACTIVE:', code);
+        return { ok: false as const, reason: 'INACTIVE' as const, message: 'This QR code has been disabled.' };
+      }
+
+      if (playCount >= maxPlays) {
+        console.warn(`[QR PLAY] LIMIT_REACHED: ${playCount}/${maxPlays} — all QR plays used`);
+        return {
+          ok:      false as const,
+          reason:  'LIMIT_REACHED' as const,
+          message: 'All QR Plays Used.\nPlease scan a new QR code.',
+        };
+      }
+
+      // Atomically commit the increment
+      // Plain integer (not FieldValue.increment) so Security Rules can verify
+      // request.resource.data.playCount == resource.data.playCount + 1
+      const newPlayCount = playCount + 1;
+      const today        = new Date().toISOString().slice(0, 10);
+      const prevDaily    = (data.dailyScans as Record<string, number>)?.[today] ?? 0;
+
+      tx.update(ref, {
+        playCount:               newPlayCount,
+        [`dailyScans.${today}`]: prevDaily + 1,
+        lastScannedAt:           new Date(),
+      });
+
+      const remaining = maxPlays - newPlayCount;
+      const unlimited = maxPlays >= 999999;
+
+      console.log(`[QR PLAY CONSUMED] id=${code} | playCount=${newPlayCount} | maxPlays=${maxPlays} | remainingPlays=${unlimited ? '∞' : remaining}`);
+
+      return { ok: true as const, remaining, unlimited: unlimited || undefined };
+    });
+
+    console.log('[QR PLAY]', result.ok ? 'GRANTED' : 'DENIED', result.ok ? '' : (result as any).reason);
+    return result;
+
+  } catch (err: any) {
+    const firebaseCode: string = err?.code    ?? '';
+    const rawMessage:   string = err?.message ?? String(err);
+    console.error('[QR PLAY] Transaction error:', { code, firebaseCode, rawMessage });
+
+    // Release lock on error so the player can retry
+    releaseLock(lockKey);
+
+    if (firebaseCode === 'permission-denied') {
+      return { ok: false, reason: 'ERROR', message: 'Play failed — rules may not be deployed yet. Try again shortly.' };
+    }
+    if (firebaseCode === 'unavailable' || firebaseCode === 'deadline-exceeded') {
+      return { ok: false, reason: 'ERROR', message: 'Firebase unavailable. Check your connection and try again.' };
+    }
+    return { ok: false, reason: 'ERROR', message: rawMessage || 'Unknown error. Please try again.' };
   }
 }
 
 /**
  * Protein-scan specific: atomic dedup check + write in a single transaction.
- * Replaces the old two-step getDoc → addDoc pattern that had a TOCTOU gap.
- *
  * Returns: 'new' | 'duplicate'
  * Throws on Firestore error so the caller can handle it.
  */
@@ -280,7 +323,6 @@ export async function claimProteinScan(
   const dedupId  = `${uid}_${safeCode}`;
   const dedupRef = doc(db, 'proteinScans', dedupId);
 
-  // Client-side cooldown: same user + same QR within COOLDOWN_MS
   const lockKey = `protein:${uid}:${qrCode}`;
   if (!acquireLock(lockKey)) {
     console.warn('[PROTEIN DEDUP] Cooldown active — duplicate scan blocked');
@@ -294,9 +336,8 @@ export async function claimProteinScan(
       const snap = await tx.get(dedupRef);
       if (snap.exists()) {
         outcome.value = 'duplicate';
-        return; // abort — no writes
+        return;
       }
-      // Atomically create the dedup marker
       tx.set(dedupRef, {
         userId:       uid,
         qrId:         qrCode,
@@ -313,7 +354,6 @@ export async function claimProteinScan(
     return outcome.value;
 
   } catch (err: any) {
-    // Release lock on failure so user can retry
     releaseLock(lockKey);
     throw err;
   }
