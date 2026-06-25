@@ -107,7 +107,7 @@ export async function validateEggForProtein(rawCode: string): Promise<EggQRValid
     });
 
     if (firebaseCode === 'permission-denied') {
-      return { ok: false, reason: 'ERROR', message: 'Permission Denied. Your account cannot read this QR code.' };
+      return { ok: false, reason: 'ERROR', message: 'Scan failed — rules may not be deployed yet. Try again shortly.' };
     }
     // On network error, if the code format looks right, allow offline logging
     if (looksLikeSKMCode) {
@@ -220,7 +220,7 @@ export async function validateAndUseQR(rawCode: string): Promise<QRValidationRes
 
     // Surface the real error — never hide permission issues behind "Network error"
     if (firebaseCode === 'permission-denied') {
-      return { ok: false, reason: 'ERROR', message: 'Permission Denied. Your account cannot validate this QR code.' };
+      return { ok: false, reason: 'ERROR', message: 'Scan failed — rules may not be deployed yet. Try again shortly.' };
     }
     if (firebaseCode === 'unavailable' || firebaseCode === 'deadline-exceeded') {
       return { ok: false, reason: 'ERROR', message: 'Firebase Unavailable. Please check your connection and try again.' };

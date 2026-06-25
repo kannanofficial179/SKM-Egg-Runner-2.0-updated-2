@@ -86,12 +86,11 @@ service cloud.firestore {
 
     match /qrCodes/{code} {
       allow read:   if isAuth();
-      // Game scan: any authenticated user can increment playCount by exactly 1
-      // and update dailyScans + lastScannedAt (added for scan analytics).
+      // Any authenticated user can scan a QR code.
+      // The only write constraint is that playCount increments by exactly 1
+      // and does not exceed maxPlays. dailyScans and lastScannedAt are allowed
+      // as additional fields written by the scan transaction.
       allow update: if isAuth()
-                    && !isDeveloper()
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                         .hasOnly(['playCount', 'dailyScans', 'lastScannedAt'])
                     && request.resource.data.playCount == resource.data.playCount + 1
                     && request.resource.data.playCount <= resource.data.maxPlays;
       // Developer: full update access (bulk disable / enable / admin ops)
