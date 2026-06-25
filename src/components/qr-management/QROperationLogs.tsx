@@ -5,27 +5,27 @@ import type { OpLog } from '../../services/qr/qrManagementService';
 
 const RED = '#D71920';
 
-const OP_COLORS: Record<string, string> = {
-  'disable-all':    '#f59e0b',
-  'enable-all':     '#22c55e',
-  'delete-all':     '#ef4444',
-  'delete-selected':'#ef4444',
-  'print':          '#60a5fa',
-  'export':         '#a78bfa',
-  'backup':         '#34d399',
+const OP_META: Record<string, { color: string; bg: string; border: string }> = {
+  'disable-all':    { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+  'enable-all':     { color: '#15803D', bg: '#F0FDF4', border: '#BBF7D0' },
+  'delete-all':     { color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  'delete-selected':{ color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  'print':          { color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  'export':         { color: '#6D28D9', bg: '#FAF5FF', border: '#DDD6FE' },
+  'backup':         { color: '#0891B2', bg: '#ECFEFF', border: '#A5F3FC' },
 };
 
 function OpIcon({ op, color }: { op: string; color: string }) {
-  const props = { size: 15, strokeWidth: 2, color };
+  const p = { size: 15, strokeWidth: 2, color };
   switch (op) {
-    case 'disable-all':     return <PauseCircle {...props} />;
-    case 'enable-all':      return <PlayCircle  {...props} />;
-    case 'delete-all':      return <Trash2      {...props} />;
-    case 'delete-selected': return <Trash       {...props} />;
-    case 'print':           return <Printer     {...props} />;
-    case 'export':          return <Upload      {...props} />;
-    case 'backup':          return <HardDrive   {...props} />;
-    default:                return <Activity    {...props} />;
+    case 'disable-all':     return <PauseCircle {...p} />;
+    case 'enable-all':      return <PlayCircle  {...p} />;
+    case 'delete-all':      return <Trash2      {...p} />;
+    case 'delete-selected': return <Trash       {...p} />;
+    case 'print':           return <Printer     {...p} />;
+    case 'export':          return <Upload      {...p} />;
+    case 'backup':          return <HardDrive   {...p} />;
+    default:                return <Activity    {...p} />;
   }
 }
 
@@ -37,9 +37,7 @@ function timeAgo(ts: Date): string {
   return ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
-interface Props {
-  refreshKey: number;
-}
+interface Props { refreshKey: number; }
 
 export default function QROperationLogs({ refreshKey }: Props) {
   const [logs,    setLogs]    = useState<OpLog[]>([]);
@@ -47,75 +45,52 @@ export default function QROperationLogs({ refreshKey }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    fetchOpLogs(30)
-      .then(setLogs)
-      .catch(() => setLogs([]))
-      .finally(() => setLoading(false));
+    fetchOpLogs(30).then(setLogs).catch(() => setLogs([])).finally(() => setLoading(false));
   }, [refreshKey]);
 
   return (
     <section>
-      <h2 style={{ fontSize: 14, fontWeight: 800, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 2, margin: '0 0 14px' }}>
-        Operation Logs
-      </h2>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 800, color: '#1A1A1A', margin: 0 }}>Operation Logs</h2>
+        <p style={{ fontSize: 11, color: '#9CA3AF', margin: '2px 0 0', fontWeight: 500 }}>Recent admin actions</p>
+      </div>
 
-      <div style={{
-        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(215,25,32,0.18)',
-        borderRadius: 18, padding: 20,
-      }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 18, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
-            <div style={{ width: 24, height: 24, border: '2.5px solid rgba(215,25,32,0.2)', borderTopColor: RED, borderRadius: '50%', animation: 'olspin 0.8s linear infinite' }} />
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
+            <div style={{ width: 22, height: 22, border: `2.5px solid #F3F4F6`, borderTopColor: RED, borderRadius: '50%', animation: 'olspin 0.8s linear infinite' }} />
           </div>
         ) : logs.length === 0 ? (
-          <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, textAlign: 'center', padding: '20px 0', margin: 0 }}>
-            No operations logged yet.
-          </p>
+          <p style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '20px 0', margin: 0 }}>No operations logged yet.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {logs.map((log, i) => {
-              const color = OP_COLORS[log.operation] ?? 'rgba(255,255,255,0.5)';
+              const meta = OP_META[log.operation] ?? { color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' };
               return (
                 <div key={log.id} style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '10px 4px',
-                  borderBottom: i < logs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                  borderBottom: i < logs.length - 1 ? '1px solid #F3F4F6' : 'none',
                 }}>
-                  <div style={{
-                    width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                    background: `${color}18`, border: `1px solid ${color}33`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <OpIcon op={log.operation} color={color} />
+                  <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: meta.bg, border: `1px solid ${meta.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <OpIcon op={log.operation} color={meta.color} />
                   </div>
-
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>
-                        {log.operation}
-                      </span>
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
-                        background: `${color}18`, color, textTransform: 'uppercase', letterSpacing: 0.5,
-                      }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#1A1A1A', fontFamily: 'monospace' }}>{log.operation}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: meta.bg, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.5, border: `1px solid ${meta.border}` }}>
                         {log.type}
                       </span>
                     </div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
-                      by {log.actor} · {log.count} codes
-                    </div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>by {log.actor} · {log.count} codes</div>
                   </div>
-
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', flexShrink: 0, textAlign: 'right' }}>
-                    {timeAgo(log.ts)}
-                  </div>
+                  <div style={{ fontSize: 10, color: '#9CA3AF', flexShrink: 0, textAlign: 'right' }}>{timeAgo(log.ts)}</div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
-
       <style>{`@keyframes olspin { to { transform: rotate(360deg); } }`}</style>
     </section>
   );
