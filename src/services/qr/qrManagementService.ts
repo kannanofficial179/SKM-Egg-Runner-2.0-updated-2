@@ -418,6 +418,21 @@ export async function bulkDeleteByType(type: QRCodeType): Promise<number> {
   return count;
 }
 
+// ── Bulk delete by specific doc IDs ──────────────────────────────────────────
+
+export async function bulkDeleteByIds(ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  let count = 0;
+  for (let i = 0; i < ids.length; i += 499) {
+    const chunk = ids.slice(i, i + 499);
+    const b = writeBatch(db);
+    chunk.forEach(id => b.delete(doc(db, COLLECTION, id)));
+    await b.commit();
+    count += chunk.length;
+  }
+  return count;
+}
+
 // ── Operation Log ─────────────────────────────────────────────────────────────
 
 export interface OpLog {

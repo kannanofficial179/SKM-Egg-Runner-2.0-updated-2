@@ -36,12 +36,12 @@ async function printQRCodes(
 
   // Render all QR images first
   const items = await Promise.all(
-    codes.map(async qr => ({
-      code:     qr.code,
-      type:     qr.type,
-      batch:    qr.batch || '—',
-      maxPlays: qr.maxPlays >= 999999 ? 'Unlimited' : String(qr.maxPlays),
-      dataUrl:  await makeQRDataUrl(qr.code),
+    codes.map(async (qr, idx) => ({
+      code:      qr.code,
+      type:      qr.type,
+      isDev:     qr.type.toLowerCase() === 'developer',
+      sheetNum:  Math.floor(idx / PER_PAGE) + 1,
+      dataUrl:   await makeQRDataUrl(qr.code),
     }))
   );
 
@@ -51,16 +51,22 @@ async function printQRCodes(
     pages.push(items.slice(i, i + PER_PAGE));
   }
 
-  const rows = (page: typeof items) => {
+  const rows = (page: typeof items, pageIdx: number) => {
     const rowHtml: string[] = [];
     for (let r = 0; r < page.length; r += PER_ROW) {
       const cells = page.slice(r, r + PER_ROW);
       const cellsHtml = cells.map(item => `
-        <td style="padding:10px;text-align:center;vertical-align:top;width:33.33%">
-          <img src="${item.dataUrl}" width="160" height="160" style="display:block;margin:0 auto 6px;border:1px solid #eee;border-radius:6px"/>
-          <div style="font-size:11px;font-weight:700;font-family:monospace;color:#111;margin-bottom:2px">${item.code}</div>
-          <div style="font-size:9px;color:#D71920;font-weight:700;text-transform:uppercase;letter-spacing:1px">${item.type}</div>
-          <div style="font-size:9px;color:#888;margin-top:2px">Max: ${item.maxPlays} · Batch: ${item.batch}</div>
+        <td style="padding:14px 10px;text-align:center;vertical-align:top;width:33.33%">
+          <div style="display:inline-block;border:1.5px solid #eee;border-radius:12px;padding:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+            <img src="${item.dataUrl}" width="160" height="160" style="display:block;margin:0 auto 10px;border-radius:6px"/>
+            <div style="font-size:13px;font-weight:900;font-family:monospace;color:#111;margin-bottom:4px;letter-spacing:1px">${item.code}</div>
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;padding:3px 10px;border-radius:20px;display:inline-block;
+              background:${item.isDev ? 'rgba(139,0,0,0.08)' : 'rgba(215,25,32,0.07)'};
+              color:${item.isDev ? '#8B0000' : '#D71920'}">
+              ${item.type}${item.isDev ? ' · Unlimited Access' : ''}
+            </div>
+            <div style="font-size:9px;color:#bbb;margin-top:6px">Sheet ${pageIdx + 1}</div>
+          </div>
         </td>
       `).join('');
       rowHtml.push(`<tr>${cellsHtml}</tr>`);
@@ -91,7 +97,7 @@ async function printQRCodes(
           <div class="header-title">▦ SKM QR Code Sheet</div>
           <div class="header-meta">Page ${pi + 1} / ${pages.length}<br/>${date}<br/>Admin: ${actor}</div>
         </div>
-        <table>${rows(page)}</table>
+        <table>${rows(page, pi)}</table>
       </div>
     `).join('')}
   </body></html>`;
@@ -205,7 +211,7 @@ export default function QRPrintCenter({ codes, actor }: Props) {
         </button>
 
         <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', margin: '10px 0 0', lineHeight: 1.6 }}>
-          Opens a print-ready A4 sheet · 9 QR per page · includes code, type, batch and max plays
+          Opens a print-ready A4 sheet · 9 QR per page · clean layout suitable for packaging and production
         </p>
       </div>
 
