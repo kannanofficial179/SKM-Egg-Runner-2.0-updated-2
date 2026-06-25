@@ -87,12 +87,16 @@ service cloud.firestore {
     match /qrCodes/{code} {
       allow read:   if isAuth();
       // Any authenticated user can scan a QR code.
-      // The only write constraint is that playCount increments by exactly 1
-      // and does not exceed maxPlays. dailyScans and lastScannedAt are allowed
-      // as additional fields written by the scan transaction.
+      // Rule: new playCount must be exactly old + 1, must not exceed maxPlays,
+      // and other fields (dailyScans, lastScannedAt) may also be written.
+      // NOTE: we do NOT use FieldValue.increment() in the scan transaction
+      // because Security Rules evaluate request.resource.data which contains
+      // the final merged value — plain integer assignment is fully verifiable.
       allow update: if isAuth()
                     && request.resource.data.playCount == resource.data.playCount + 1
-                    && request.resource.data.playCount <= resource.data.maxPlays;
+                    && request.resource.data.playCount <= resource.data.maxPlays
+                    && request.resource.data.active    == resource.data.active
+                    && request.resource.data.maxPlays  == resource.data.maxPlays;
       // Developer: full update access (bulk disable / enable / admin ops)
       allow update: if isDeveloper();
       allow create: if isAuth();

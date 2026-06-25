@@ -19,7 +19,7 @@
  *   concurrent scan requests for the same code within 10 seconds.
  */
 
-import { doc, getDoc, runTransaction, increment } from 'firebase/firestore';
+import { doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 
 const COLLECTION = 'qrCodes';
@@ -215,17 +215,21 @@ export async function validateAndUseQR(rawCode: string): Promise<QRValidationRes
       }
 
       // ── All checks passed — atomically commit the increment ──────────────
-      const today = new Date().toISOString().slice(0, 10);
+      // Use plain integers (not FieldValue.increment) so Security Rules can
+      // verify request.resource.data.playCount == resource.data.playCount + 1.
+      // FieldValue.increment is a server transform invisible to rule evaluation.
+      const today        = new Date().toISOString().slice(0, 10);
+      const newPlayCount = playCount + 1;
+      const prevDailyCount: number = (data[`dailyScans`] as Record<string, number>)?.[today] ?? 0;
       tx.update(ref, {
-        playCount:                    playCount + 1,
-        [`dailyScans.${today}`]:      increment(1),
+        playCount:                    newPlayCount,
+        [`dailyScans.${today}`]:      prevDailyCount + 1,
         lastScannedAt:                new Date(),
       });
 
-      const newCount  = playCount + 1;
-      const remaining = maxPlays - newCount;
+      const remaining = maxPlays - newPlayCount;
       const unlimited = maxPlays >= 999999;
-      console.log('[PLAY COUNT COMMITTED]', newCount, '/', maxPlays, '| remaining:', unlimited ? '∞' : remaining);
+      console.log('[PLAY COUNT COMMITTED]', newPlayCount, '/', maxPlays, '| remaining:', unlimited ? '∞' : remaining);
 
       return { ok: true as const, remaining, unlimited: unlimited || undefined };
     });
