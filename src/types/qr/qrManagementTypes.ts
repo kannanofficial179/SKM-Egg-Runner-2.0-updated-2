@@ -16,12 +16,16 @@ export interface QRCodeRecord {
 }
 
 export interface QRDashboardStats {
-  totalGenerated: number;
-  activeQR: number;
-  disabledQR: number;
-  goldenQR: number;
-  scannedToday: number;
-  unusedQR: number;
+  totalGenerated:  number;
+  activeQR:        number;
+  disabledQR:      number;
+  goldenQR:        number;
+  developerQR:     number;
+  scannedToday:    number;
+  scannedThisWeek: number;
+  scannedThisMonth:number;
+  unusedQR:        number;
+  lastSync:        string;
 }
 
 export interface QRGeneratorForm {

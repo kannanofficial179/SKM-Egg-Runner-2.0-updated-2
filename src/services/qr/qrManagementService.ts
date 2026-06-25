@@ -12,6 +12,8 @@ import {
   Timestamp,
   writeBatch,
   getCountFromServer,
+  onSnapshot,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import type {
@@ -43,68 +45,87 @@ function todayStr(): string {
 
 // ── Dashboard Stats ────────────────────────────────────────────────────────────
 
-export type DashboardResult =
-  | { ok: true;  stats: QRDashboardStats }
-  | { ok: false; error: string; stats: QRDashboardStats };
+export const EMPTY_STATS: QRDashboardStats = {
+  totalGenerated: 0, activeQR: 0, disabledQR: 0,
+  goldenQR: 0, developerQR: 0,
+  scannedToday: 0, scannedThisWeek: 0, scannedThisMonth: 0,
+  unusedQR: 0, lastSync: '',
+};
 
-const EMPTY_STATS: QRDashboardStats = { totalGenerated: 0, activeQR: 0, disabledQR: 0, goldenQR: 0, scannedToday: 0, unusedQR: 0 };
+/** Compute stats from a raw Firestore snapshot (used by both one-shot fetch and live listener) */
+export function computeStatsFromSnap(snap: { forEach: (fn: (d: any) => void) => void; size: number }): QRDashboardStats {
+  const today    = todayStr();
+  const weekAgo  = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+  const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
+  const weekStr  = weekAgo.toISOString().slice(0, 10);
+  const monthStr = monthAgo.toISOString().slice(0, 10);
 
-export async function fetchDashboardStats(): Promise<QRDashboardStats> {
-  console.log('[LOAD DASHBOARD] Fetching from collection:', COLLECTION);
+  let totalGenerated = 0, activeQR = 0, disabledQR = 0;
+  let goldenQR = 0, developerQR = 0, unusedQR = 0;
+  let scannedToday = 0, scannedThisWeek = 0, scannedThisMonth = 0;
 
-  let snap;
-  try {
-    snap = await getDocs(collection(db, COLLECTION));
-  } catch (err: any) {
-    console.error('[LOAD FAILURE] Could not read collection:', COLLECTION, err?.message);
-    throw err;
-  }
-
-  console.log('[LOAD TOTAL QR] Document count:', snap.size);
-
-  let totalGenerated = 0;
-  let activeQR       = 0;
-  let disabledQR     = 0;
-  let goldenQR       = 0;
-  let scannedToday   = 0;
-  let unusedQR       = 0;
-
-  const today = todayStr();
+  console.log('[QR Dashboard] Computing stats from', snap.size, 'documents');
 
   snap.forEach(d => {
-    const data = d.data();
+    const data       = d.data();
+    const isActive:  boolean = data.active    ?? true;
+    const playCount: number  = data.playCount ?? 0;
+    const maxPlays:  number  = data.maxPlays  ?? 2;
+    const typeLower: string  = (data.type ?? '').toLowerCase();
+
     totalGenerated++;
 
-    const isActive:   boolean = data.active    ?? true;
-    const playCount:  number  = data.playCount ?? 0;
-    const maxPlays:   number  = data.maxPlays  ?? 2;
-    // Normalise type to lower-case for comparison — docs may store "Regular", "regular", "REGULAR"
-    const typeRaw:    string  = data.type ?? '';
-    const typeLower:  string  = typeRaw.toLowerCase();
-
-    if (!isActive) {
-      disabledQR++;
-    } else if (playCount >= maxPlays) {
+    // Active = active flag true AND not yet exhausted
+    if (!isActive || playCount >= maxPlays) {
       disabledQR++;
     } else {
       activeQR++;
     }
 
-    if (typeLower === 'golden') goldenQR++;
-    if (playCount === 0)        unusedQR++;
+    if (typeLower === 'golden')    goldenQR++;
+    if (typeLower === 'developer') developerQR++;
+    if (playCount === 0)           unusedQR++;
 
-    // scansToday: stored as dailyScans map { [YYYY-MM-DD]: count }
+    // dailyScans map: { "YYYY-MM-DD": count }
     const dailyMap: Record<string, number> = data.dailyScans ?? {};
+
+    // Today
     scannedToday += dailyMap[today] ?? 0;
+
+    // This week + this month — sum all matching date keys
+    Object.entries(dailyMap).forEach(([dateKey, count]) => {
+      if (dateKey >= weekStr)  scannedThisWeek  += count;
+      if (dateKey >= monthStr) scannedThisMonth += count;
+    });
   });
 
-  console.log('[LOAD ACTIVE QR]',    activeQR);
-  console.log('[LOAD DISABLED QR]',  disabledQR);
-  console.log('[LOAD GOLDEN QR]',    goldenQR);
-  console.log('[LOAD SCANNED TODAY]',scannedToday);
-  console.log('[LOAD SUCCESS] total:', totalGenerated, '| unused:', unusedQR);
+  const lastSync = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  return { totalGenerated, activeQR, disabledQR, goldenQR, scannedToday, unusedQR };
+  console.log('[QR Dashboard] totalGenerated:', totalGenerated);
+  console.log('[QR Dashboard] activeQR:', activeQR, '| disabledQR:', disabledQR);
+  console.log('[QR Dashboard] goldenQR:', goldenQR, '| developerQR:', developerQR);
+  console.log('[QR Dashboard] unusedQR:', unusedQR);
+  console.log('[QR Dashboard] scannedToday:', scannedToday, '| thisWeek:', scannedThisWeek, '| thisMonth:', scannedThisMonth);
+  console.log('[QR Dashboard] lastSync:', lastSync);
+
+  return { totalGenerated, activeQR, disabledQR, goldenQR, developerQR, unusedQR, scannedToday, scannedThisWeek, scannedThisMonth, lastSync };
+}
+
+export async function fetchDashboardStats(): Promise<QRDashboardStats> {
+  console.log('[QR Dashboard] One-shot fetch from collection:', COLLECTION);
+  const snap = await getDocs(collection(db, COLLECTION));
+  return computeStatsFromSnap(snap);
+}
+
+/** Subscribe to live dashboard stats. Calls onChange whenever any QR doc changes. */
+export function subscribeDashboardStats(onChange: (stats: QRDashboardStats) => void): Unsubscribe {
+  console.log('[QR Dashboard] Starting live onSnapshot listener on:', COLLECTION);
+  return onSnapshot(collection(db, COLLECTION), (snap) => {
+    console.log('[QR Dashboard] onSnapshot fired — docs:', snap.size);
+    onChange(computeStatsFromSnap(snap));
+  }, (err) => {
+    console.error('[QR Dashboard] onSnapshot error:', err?.message);
+  });
 }
 
 // ── Generate QR Codes ──────────────────────────────────────────────────────────
@@ -250,50 +271,69 @@ export async function createUnlimitedGoldenQR(code: string): Promise<void> {
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 export async function fetchAnalytics(): Promise<{
-  daily: QRAnalyticsData[];
-  weekly: QRAnalyticsData[];
+  daily:   QRAnalyticsData[];
+  weekly:  QRAnalyticsData[];
   monthly: QRAnalyticsData[];
 }> {
+  console.log('[QR Analytics] Fetching from collection:', COLLECTION);
   const snap = await getDocs(collection(db, COLLECTION));
+  console.log('[QR Analytics] Documents returned:', snap.size);
 
   // Aggregate dailyScans maps across all codes
   const dayTotals: Record<string, number> = {};
   snap.forEach(d => {
     const dailyScans: Record<string, number> = d.data().dailyScans ?? {};
     Object.entries(dailyScans).forEach(([date, count]) => {
-      dayTotals[date] = (dayTotals[date] ?? 0) + count;
+      dayTotals[date] = (dayTotals[date] ?? 0) + (count as number);
     });
   });
 
-  const sorted = Object.entries(dayTotals).sort(([a], [b]) => a.localeCompare(b));
+  console.log('[QR Analytics] Unique scan days found:', Object.keys(dayTotals).length);
 
-  const last7  = sorted.slice(-7);
-  const last30 = sorted.slice(-30);
+  // Build a complete last-7 and last-30 day range (fills zeros for missing days)
+  const today    = todayStr();
+  const allDates = (n: number): string[] =>
+    Array.from({ length: n }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (n - 1 - i));
+      return d.toISOString().slice(0, 10);
+    });
 
-  // Daily — last 7 days
-  const daily: QRAnalyticsData[] = last7.map(([date, scans]) => ({
-    label: date.slice(5), // MM-DD
-    scans,
+  const last7Dates  = allDates(7);
+  const last30Dates = allDates(30);
+
+  // Daily — last 7 days with labels like "Mon", "Tue"
+  const daily: QRAnalyticsData[] = last7Dates.map(date => ({
+    label: new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }),
+    scans: dayTotals[date] ?? 0,
   }));
 
-  // Weekly — group last 30 days into weeks
+  // Weekly — last 30 days grouped into 4 weeks (W1=oldest, W4=most recent)
   const weekly: QRAnalyticsData[] = [];
   for (let w = 0; w < 4; w++) {
-    const chunk = last30.slice(w * 7, w * 7 + 7);
-    if (!chunk.length) continue;
-    const total = chunk.reduce((sum, [, c]) => sum + c, 0);
-    weekly.push({ label: `Week ${w + 1}`, scans: total });
+    const chunk = last30Dates.slice(w * 7, w * 7 + 7);
+    const total = chunk.reduce((sum, d) => sum + (dayTotals[d] ?? 0), 0);
+    const label = w === 3 ? 'This Wk' : `${4 - w}w ago`;
+    weekly.push({ label, scans: total });
   }
 
-  // Monthly — group all available data by month
+  // Monthly — all available data grouped by YYYY-MM, last 6 months
   const monthTotals: Record<string, number> = {};
-  sorted.forEach(([date, scans]) => {
-    const month = date.slice(0, 7); // YYYY-MM
+  Object.entries(dayTotals).forEach(([date, scans]) => {
+    const month = date.slice(0, 7);
     monthTotals[month] = (monthTotals[month] ?? 0) + scans;
   });
   const monthly: QRAnalyticsData[] = Object.entries(monthTotals)
+    .sort(([a], [b]) => a.localeCompare(b))
     .slice(-6)
-    .map(([month, scans]) => ({ label: month.slice(5), scans }));
+    .map(([month, scans]) => ({
+      label: new Date(month + '-15').toLocaleDateString('en-US', { month: 'short' }),
+      scans,
+    }));
+
+  console.log('[QR Analytics] daily totals:', daily.map(d => `${d.label}:${d.scans}`).join(', '));
+  console.log('[QR Analytics] weekly totals:', weekly.map(d => `${d.label}:${d.scans}`).join(', '));
+  console.log('[QR Analytics] monthly totals:', monthly.map(d => `${d.label}:${d.scans}`).join(', '));
 
   return { daily, weekly, monthly };
 }

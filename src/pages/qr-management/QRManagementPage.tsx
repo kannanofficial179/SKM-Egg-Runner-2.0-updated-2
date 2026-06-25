@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { fetchDashboardStats, fetchAllQRCodes } from '../../services/qr/qrManagementService';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { subscribeDashboardStats, fetchAllQRCodes, EMPTY_STATS } from '../../services/qr/qrManagementService';
 import type { QRDashboardStats, QRCodeRecord } from '../../types/qr/qrManagementTypes';
 import { useAuth } from '../../auth/AuthProvider';
 import QRDashboard     from '../../components/qr-management/QRDashboard';
@@ -26,25 +26,37 @@ export default function QRManagementPage({ onBack }: Props) {
   const { user } = useAuth();
   const actor = user?.email ?? user?.displayName ?? 'Admin';
 
-  const [stats,        setStats]        = useState<QRDashboardStats>({ totalGenerated: 0, activeQR: 0, disabledQR: 0, goldenQR: 0, scannedToday: 0, unusedQR: 0 });
+  const [stats,        setStats]        = useState<QRDashboardStats>(EMPTY_STATS);
   const [codes,        setCodes]        = useState<QRCodeRecord[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
   const [statsError,   setStatsError]   = useState<string | null>(null);
   const [refreshKey,   setRefreshKey]   = useState(0);
+  const unsubRef = useRef<(() => void) | null>(null);
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
 
+  // Live stats via onSnapshot — auto-updates on every QR change
   useEffect(() => {
     setLoadingStats(true);
     setStatsError(null);
-    Promise.all([fetchDashboardStats(), fetchAllQRCodes()])
-      .then(([s, c]) => { setStats(s); setCodes(c); })
+
+    // Subscribe to live dashboard stats
+    unsubRef.current = subscribeDashboardStats((newStats) => {
+      setStats(newStats);
+      setLoadingStats(false);
+    });
+
+    // Also fetch all codes for export/print (one-shot, refreshed manually)
+    fetchAllQRCodes()
+      .then(setCodes)
       .catch((err: any) => {
         const msg = err?.message ?? String(err);
-        console.error('[LOAD FAILURE]', msg);
+        console.error('[QR Management] fetchAllQRCodes failed:', msg);
         setStatsError(msg);
-      })
-      .finally(() => setLoadingStats(false));
+        setLoadingStats(false);
+      });
+
+    return () => { unsubRef.current?.(); };
   }, [refreshKey]);
 
   return (

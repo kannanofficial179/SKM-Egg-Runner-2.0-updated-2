@@ -10,7 +10,7 @@
  *   createdAt: Timestamp
  */
 
-import { doc, getDoc, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, increment } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 
 const COLLECTION = 'qrCodes';
@@ -165,8 +165,13 @@ export async function validateAndUseQR(rawCode: string): Promise<QRValidationRes
       };
     }
 
-    // Atomically increment playCount
-    tx.update(ref, { playCount: playCount + 1 });
+    // Atomically increment playCount and record daily scan
+    const today = new Date().toISOString().slice(0, 10);
+    tx.update(ref, {
+      playCount: playCount + 1,
+      [`dailyScans.${today}`]: increment(1),
+      lastScannedAt: new Date(),
+    });
     console.log('[PLAY COUNT UPDATED]', playCount + 1, '/', maxPlays);
 
     const remaining = maxPlays - (playCount + 1);
