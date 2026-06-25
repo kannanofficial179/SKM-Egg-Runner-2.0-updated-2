@@ -36,7 +36,7 @@ export default function LoadingScreen({ ready, onDone }: Props) {
 
   // Rotate messages every 600ms
   useEffect(() => {
-    const t = setInterval(() => setMsgIdx(i => (i + 1) % MESSAGES.length), 700);
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % loadingMessages.length), 700);
     return () => clearInterval(t);
   }, []);
 
@@ -65,13 +65,11 @@ export default function LoadingScreen({ ready, onDone }: Props) {
     const t = setTimeout(() => {
       if (doneRef.current) return;
       doneRef.current = true;
-      setVisible(false);
-      setTimeout(onDone, 280);
+      setVisible(false);   // triggers opacity:0 CSS transition (280ms)
+      setTimeout(onDone, 300); // fire onDone after transition completes
     }, 350);
     return () => clearTimeout(t);
   }, [ready, onDone]);
-
-  if (!visible) return null;
 
   return (
     <div style={{
@@ -82,6 +80,7 @@ export default function LoadingScreen({ ready, onDone }: Props) {
       fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
       transition: 'opacity 280ms ease',
       opacity: visible ? 1 : 0,
+      pointerEvents: visible ? 'auto' : 'none',
     }}>
 
       {/* Top red accent line */}
@@ -112,7 +111,7 @@ export default function LoadingScreen({ ready, onDone }: Props) {
         margin: '0 0 28px', minHeight: 18, textAlign: 'center',
         transition: 'opacity 200ms',
       }}>
-        {MESSAGES[msgIdx]}
+        {loadingMessages[msgIdx]}
       </p>
 
       {/* Progress bar */}

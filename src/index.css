@@ -10,10 +10,11 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #020617; /* Slate-950 default */
+  background-color: #ffffff; /* White base — prevents black flash between screen transitions */
   user-select: none;
   -webkit-user-select: none;
 }
+
 
 @keyframes floatUp {
   0% {
