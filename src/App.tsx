@@ -942,13 +942,12 @@ export default function App({ onBackToMenu }: { onBackToMenu?: () => void } = {}
               console.log('[QR] Golden QR — unlimited retry enabled');
               updateSession({ remainingAttempts: 999, unlimited: true });
             } else {
-              // Use the exact remaining count committed by the Firestore transaction.
-              // remaining is plays left AFTER this one was consumed, so total plays
-              // available to this session = remaining + 1 (the one just used to enter).
-              const remaining = remainingRaw !== null ? Number(remainingRaw) : 0;
-              const totalPlays = remaining + 1; // +1 = the current session just validated
-              console.log('[QR] Normal QR — transaction-confirmed plays for this session:', totalPlays, '| remaining after entry:', remaining);
-              updateSession({ remainingAttempts: totalPlays });
+              // Each QR scan = exactly 1 game run. The Firestore transaction already
+              // consumed one use at scan time. remainingRaw tells us how many uses
+              // are left on the QR for future scans — it does NOT grant extra runs here.
+              // This session gets exactly 1 run regardless of remaining.
+              console.log('[QR] Normal QR — 1 run granted | QR remaining uses:', remainingRaw ?? '0');
+              updateSession({ remainingAttempts: 1 });
             }
             handleStartGame();
           }}
