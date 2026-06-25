@@ -89,7 +89,7 @@ export default function LoadingScreen({ ready, onDone }: Props) {
         marginBottom: 24,
       }}>
         <img
-          src="/THUMBS_POSE__Egg_-removebg-preview.png"
+          src="/Jump pose.png"
           alt="SKM"
           style={{ width: 80, height: 80, objectFit: 'contain', display: 'block' }}
         />

@@ -49,7 +49,7 @@ export default function ProteinTrackerScreen({ onBack }: ProteinTrackerScreenPro
       <div style={{ flexShrink: 0, background: '#fff', borderBottom: '1px solid #F0F0F0', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <img src="/THUMBS_POSE__Egg_-removebg-preview.png" alt="SKM"
+            <img src="/egg mus_Image_v5vrg3v5vrg3v5vr-removebg-preview.png" alt="SKM"
               style={{ width: 26, height: 26, objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(215,25,32,0.3))' }} />
             <span style={{ fontWeight: 900, fontSize: 14, color: '#D71920' }}>SKM</span>
             <span style={{ fontWeight: 900, fontSize: 14, color: '#1A1A1A' }}>Protein</span>
