@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import QRCode from 'qrcode';
-import { Plus, Download, CheckCircle2, XCircle, Sparkles, Package } from 'lucide-react';
+import { Plus, Download, CheckCircle2, XCircle, ShieldCheck, Package, Printer, Clock, Link2, QrCode as QrCodeIcon } from 'lucide-react';
 import type { QRCodeType, QRGeneratorForm } from '../../types/qr/qrManagementTypes';
 import { generateQRCodes } from '../../services/qr/qrManagementService';
 
@@ -60,73 +60,269 @@ function downloadPNG(dataUrl: string, code: string): void {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-// ─── Mascot SVG (SKM Egg drawing QR codes) ───────────────────────────────────
+// ─── Confetti particle (CSS-only, no canvas) ─────────────────────────────────
 
-function EggMascot({ done }: { done: boolean }) {
+function ConfettiParticles() {
+  const particles = [
+    { x: 12,  y: -10, size: 5,  color: RED,       delay: 0,    dur: 1.1, rx: 14  },
+    { x: 88,  y: -8,  size: 4,  color: '#F59E0B',  delay: 0.1,  dur: 1.3, rx: -20 },
+    { x: 30,  y: -14, size: 3,  color: '#6366F1',  delay: 0.2,  dur: 1.0, rx: 8   },
+    { x: 70,  y: -12, size: 4,  color: RED,        delay: 0.05, dur: 1.2, rx: -12 },
+    { x: 50,  y: -18, size: 5,  color: '#10B981',  delay: 0.15, dur: 1.4, rx: 18  },
+    { x: 20,  y: -6,  size: 3,  color: '#F59E0B',  delay: 0.25, dur: 0.9, rx: -8  },
+    { x: 80,  y: -16, size: 4,  color: '#6366F1',  delay: 0.08, dur: 1.1, rx: 22  },
+    { x: 42,  y: -10, size: 3,  color: RED,        delay: 0.3,  dur: 1.3, rx: -16 },
+    { x: 62,  y: -8,  size: 5,  color: '#10B981',  delay: 0.18, dur: 1.0, rx: 10  },
+    { x: 5,   y: -12, size: 3,  color: '#F59E0B',  delay: 0.22, dur: 1.2, rx: -6  },
+    { x: 95,  y: -10, size: 4,  color: RED,        delay: 0.12, dur: 1.1, rx: 14  },
+    { x: 55,  y: -20, size: 3,  color: '#6366F1',  delay: 0.28, dur: 0.95,rx: -18 },
+  ];
   return (
-    <svg width="110" height="130" viewBox="0 0 110 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Egg body */}
-      <ellipse cx="55" cy="78" rx="36" ry="44" fill="#FFF8E7" stroke="#F59E0B" strokeWidth="2.5" />
-      {/* Face */}
-      <ellipse cx="44" cy="72" rx="4" ry="4.5" fill="#1A1A1A" />
-      <ellipse cx="66" cy="72" rx="4" ry="4.5" fill="#1A1A1A" />
-      {/* Eye shine */}
-      <circle cx="46" cy="70" r="1.5" fill="#fff" />
-      <circle cx="68" cy="70" r="1.5" fill="#fff" />
-      {/* Smile or thumbs-up mouth */}
-      {done
-        ? <path d="M44 84 Q55 92 66 84" stroke="#1A1A1A" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-        : <path d="M44 83 Q55 88 66 83" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" fill="none" />
-      }
-      {/* Cheeks */}
-      <ellipse cx="38" cy="80" rx="5" ry="3" fill="#FCA5A5" opacity="0.6" />
-      <ellipse cx="72" cy="80" rx="5" ry="3" fill="#FCA5A5" opacity="0.6" />
-      {/* Arms */}
-      {done ? (
-        <>
-          {/* Thumbs-up right arm */}
-          <path d="M91 72 Q100 60 96 50" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" fill="none" />
-          <circle cx="96" cy="48" r="5" fill="#F59E0B" />
-          {/* Left arm relaxed */}
-          <path d="M19 72 Q10 80 14 90" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" fill="none" />
-        </>
-      ) : (
-        <>
-          {/* Right arm holding brush */}
-          <path d="M91 72 Q102 58 98 44" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" fill="none" />
-          {/* Brush */}
-          <rect x="94" y="30" width="5" height="18" rx="2" fill="#92400E" />
-          <ellipse cx="96.5" cy="30" rx="4" ry="5" fill={RED} />
-          {/* Left arm */}
-          <path d="M19 72 Q10 82 16 94" stroke="#F59E0B" strokeWidth="4" strokeLinecap="round" fill="none" />
-        </>
-      )}
-      {/* Feet */}
-      <ellipse cx="44" cy="121" rx="10" ry="5" fill="#F59E0B" />
-      <ellipse cx="66" cy="121" rx="10" ry="5" fill="#F59E0B" />
-      {/* Hat */}
-      <ellipse cx="55" cy="34" rx="28" ry="6" fill="#D71920" />
-      <rect x="38" y="10" width="34" height="26" rx="8" fill="#D71920" />
-      {/* Hat band */}
-      <rect x="38" y="28" width="34" height="6" rx="2" fill="#9B1515" />
-    </svg>
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+      {particles.map((p, i) => (
+        <div key={i} style={{
+          position: 'absolute',
+          left: `${p.x}%`, top: 0,
+          width: p.size, height: p.size,
+          background: p.color,
+          borderRadius: 1,
+          animation: `confettiFall ${p.dur}s ${p.delay}s ease-in both`,
+          transform: `rotate(${p.rx}deg)`,
+          opacity: 0,
+        }} />
+      ))}
+    </div>
   );
 }
 
-// ─── Mini QR animation (lines appearing) ─────────────────────────────────────
+// ─── Generation loading view (in-progress) ────────────────────────────────────
 
-function QRDrawAnimation({ progress }: { progress: number }) {
-  const cells = 7;
+function LoadingView({ progress, done, total, message, etaSecs }: {
+  progress: number; done: number; total: number; message: string; etaSecs: number | null;
+}) {
+  const cells = 8;
   const filled = Math.round((progress / 100) * cells * cells);
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cells},1fr)`, gap: 2, width: 56, height: 56 }}>
-      {Array.from({ length: cells * cells }).map((_, i) => (
-        <div key={i} style={{
-          borderRadius: 1,
-          background: i < filled ? RED : '#E5E7EB',
-          transition: 'background 200ms',
+    <>
+      {/* Illustration: mascot image with scanning overlay */}
+      <div style={{ position: 'relative', width: 200, height: 200, margin: '0 auto 28px', flexShrink: 0 }}>
+        {/* Soft red glow behind image */}
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: '50%',
+          background: `radial-gradient(circle, ${RED}18 0%, transparent 70%)`,
+          animation: 'glowPulse 2s ease-in-out infinite',
         }} />
-      ))}
+        {/* Mascot image */}
+        <img
+          src="/Qr.png"
+          alt="Generating QR codes"
+          style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1 }}
+        />
+        {/* Scan line overlay */}
+        <div style={{
+          position: 'absolute', left: '10%', right: '10%', height: 2, zIndex: 2,
+          background: `linear-gradient(90deg, transparent, ${RED}CC, transparent)`,
+          boxShadow: `0 0 10px 3px ${RED}60`,
+          animation: 'scanLine 1.8s ease-in-out infinite',
+          top: '10%',
+        }} />
+        {/* Mini QR grid — fills as progress advances */}
+        <div style={{
+          position: 'absolute', bottom: 8, right: 8, zIndex: 3,
+          display: 'grid', gridTemplateColumns: `repeat(${cells},1fr)`,
+          gap: 1.5, width: 52, height: 52,
+          background: 'rgba(255,255,255,0.9)',
+          borderRadius: 6, padding: 4,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        }}>
+          {Array.from({ length: cells * cells }).map((_, i) => (
+            <div key={i} style={{
+              borderRadius: 0.5,
+              background: i < filled ? RED : '#E5E7EB',
+              transition: 'background 180ms',
+            }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Counter */}
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#6B7280', margin: '0 0 4px' }}>
+          {message}
+        </p>
+        <p style={{ fontSize: 28, fontWeight: 900, color: '#1A1A1A', margin: 0, letterSpacing: '-0.5px', lineHeight: 1 }}>
+          {done.toLocaleString()} <span style={{ fontSize: 16, color: '#9CA3AF', fontWeight: 600 }}>/ {total.toLocaleString()}</span>
+        </p>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ width: '100%', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>Generating QR Codes</span>
+          <span style={{ fontSize: 11, fontWeight: 800, color: RED }}>{Math.round(progress)}%</span>
+        </div>
+        <div style={{ height: 6, borderRadius: 6, background: '#F3F4F6', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', borderRadius: 6,
+            background: `linear-gradient(90deg, ${RED}, #FF4D4D)`,
+            width: `${progress}%`,
+            transition: 'width 400ms ease',
+            backgroundSize: '200% auto',
+            animation: 'gradientSlide 1.5s linear infinite',
+          }} />
+        </div>
+        {etaSecs !== null && (
+          <p style={{ fontSize: 10, color: '#9CA3AF', margin: '5px 0 0', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
+            <Clock size={10} /> ~{etaSecs}s remaining
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Success view ─────────────────────────────────────────────────────────────
+
+function SuccessView({ total, batchName, onDownload, onClose }: {
+  total: number; batchName: string; onDownload: () => void; onClose: () => void;
+}) {
+  const [show, setShow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShow(true), 40); return () => clearTimeout(t); }, []);
+
+  const gameUrl = (() => {
+    try { return localStorage.getItem('qr_game_url') || 'https://skm-egg-runner.vercel.app'; } catch { return '—'; }
+  })();
+
+  const genTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  return (
+    <div style={{
+      width: '100%',
+      opacity: show ? 1 : 0,
+      transform: show ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.97)',
+      transition: 'opacity 350ms ease, transform 350ms cubic-bezier(0.34,1.56,0.64,1)',
+    }}>
+      {/* Illustration */}
+      <div style={{ position: 'relative', width: 200, height: 200, margin: '0 auto 24px', flexShrink: 0 }}>
+        {/* Soft red glow */}
+        <div style={{
+          position: 'absolute', inset: -20, borderRadius: '50%',
+          background: `radial-gradient(circle, ${RED}15 0%, transparent 65%)`,
+          animation: 'glowPulse 3s ease-in-out infinite',
+        }} />
+        <img
+          src="/Qr.png"
+          alt="QR batch ready"
+          style={{
+            width: '100%', height: '100%', objectFit: 'contain',
+            position: 'relative', zIndex: 1,
+            filter: 'drop-shadow(0 8px 24px rgba(215,25,32,0.18))',
+            animation: show ? 'illustrationPop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards' : 'none',
+          }}
+        />
+        {/* Shield check badge */}
+        <div style={{
+          position: 'absolute', bottom: 4, right: 4, zIndex: 3,
+          width: 36, height: 36, borderRadius: '50%',
+          background: `linear-gradient(135deg, ${RED}, #B51218)`,
+          boxShadow: `0 4px 14px ${RED}50`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: show ? 'shieldPop 0.4s 0.2s cubic-bezier(0.34,1.56,0.64,1) both' : 'none',
+        }}>
+          <ShieldCheck size={18} color="#fff" strokeWidth={2.5} />
+        </div>
+      </div>
+
+      {/* Title */}
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 900, color: '#1A1A1A', margin: '0 0 5px', letterSpacing: '-0.3px' }}>
+          QR Batch Generated Successfully
+        </h3>
+        <p style={{ fontSize: 12, color: '#6B7280', margin: 0, fontWeight: 500 }}>
+          All QR codes have been securely generated and are ready for download, printing, and deployment.
+        </p>
+      </div>
+
+      {/* Success detail card */}
+      <div style={{
+        width: '100%', background: '#F9FAFB',
+        border: '1px solid #E5E7EB', borderRadius: 14,
+        overflow: 'hidden', marginBottom: 20,
+      }}>
+        {/* Card header */}
+        <div style={{
+          padding: '10px 16px',
+          background: `linear-gradient(90deg, ${RED}08, transparent)`,
+          borderBottom: '1px solid #E5E7EB',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 6px #22C55E80' }} />
+          <span style={{ fontSize: 11, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Batch Status: Ready
+          </span>
+        </div>
+
+        {/* Detail rows */}
+        {[
+          { icon: <Package size={12} />,  label: 'Batch Name',          value: batchName },
+          { icon: <QrCodeIcon size={12} />, label: 'QR Codes Created',    value: `${total.toLocaleString()} secure QR codes` },
+          { icon: <Clock size={12} />,    label: 'Generation Time',      value: genTime },
+          { icon: <Link2 size={12} />,    label: 'Game Link Mapping',    value: gameUrl },
+          { icon: <ShieldCheck size={12} />, label: 'Encryption Status', value: 'Active — High error correction' },
+        ].map((row, i, arr) => (
+          <div key={row.label} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '10px 16px',
+            borderBottom: i < arr.length - 1 ? '1px solid #F3F4F6' : 'none',
+          }}>
+            <span style={{ color: RED, flexShrink: 0, marginTop: 1 }}>{row.icon}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', minWidth: 120, flexShrink: 0 }}>{row.label}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: '#1A1A1A',
+              flex: 1, wordBreak: 'break-all',
+              ...(row.label === 'Game Link Mapping' ? { fontFamily: 'monospace', fontSize: 10 } : {}),
+            }}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%' }}>
+        {/* Primary */}
+        <button
+          onClick={onDownload}
+          style={{
+            width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
+            background: `linear-gradient(135deg, ${RED}, #B51218)`,
+            color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+            boxShadow: `0 4px 16px ${RED}35`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            letterSpacing: 0.2,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.08)')}
+          onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
+        >
+          <Download size={15} strokeWidth={2.5} />
+          Download PNG
+        </button>
+
+        {/* Secondary */}
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%', padding: '12px 0', borderRadius: 12,
+            background: '#F3F4F6', border: '1px solid #E5E7EB',
+            color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#E5E7EB')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#F3F4F6')}
+        >
+          <Printer size={14} strokeWidth={2} />
+          Print / Close
+        </button>
+      </div>
     </div>
   );
 }
@@ -134,7 +330,7 @@ function QRDrawAnimation({ progress }: { progress: number }) {
 // ─── Full-screen generation modal ─────────────────────────────────────────────
 
 interface GenerationModalProps {
-  progress:    number;   // 0-100
+  progress:    number;
   done:        number;
   total:       number;
   message:     string;
@@ -150,140 +346,84 @@ function GenerationModal({ progress, done, total, message, completed, batchName,
 
   const etaSecs = (() => {
     if (done === 0 || done >= total) return null;
-    // rough estimate: ~50ms per QR code in Firestore
-    const msPerCode = 55;
     const remaining = total - done;
-    return Math.ceil((remaining * msPerCode) / 1000);
+    return Math.ceil((remaining * 55) / 1000);
   })();
 
   return ReactDOM.createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9000,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.55)',
-      backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+      background: 'rgba(10,10,14,0.6)',
+      backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
       opacity: visible ? 1 : 0,
       transition: 'opacity 300ms ease',
+      padding: '20px',
     }}>
       <div style={{
-        width: '100%', maxWidth: 420, margin: '0 20px',
+        width: '100%', maxWidth: 440,
         background: '#FFFFFF',
-        borderRadius: 28,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.3), 0 0 0 1px rgba(215,25,32,0.15)',
-        padding: '36px 32px 28px',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0,
-        transform: visible ? 'scale(1) translateY(0)' : 'scale(0.9) translateY(16px)',
-        transition: 'transform 300ms cubic-bezier(0.34,1.56,0.64,1), opacity 300ms ease',
+        borderRadius: 24,
+        boxShadow: '0 40px 100px rgba(0,0,0,0.35), 0 0 0 1px rgba(215,25,32,0.12)',
+        padding: '32px 28px 28px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        transform: visible ? 'scale(1) translateY(0)' : 'scale(0.92) translateY(20px)',
+        transition: 'transform 350ms cubic-bezier(0.34,1.56,0.64,1)',
         position: 'relative', overflow: 'hidden',
+        maxHeight: '90vh', overflowY: 'auto',
       }}>
 
-        {/* Red accent top bar */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${RED},#FF6B6B,${RED})`, backgroundSize: '200% auto', animation: completed ? 'none' : 'gradientSlide 2s linear infinite' }} />
-
-        {/* Sparkle decorations */}
-        {completed && (
-          <>
-            <Sparkles size={16} color="#F59E0B" style={{ position: 'absolute', top: 20, right: 28, opacity: 0.8 }} />
-            <Sparkles size={12} color="#F59E0B" style={{ position: 'absolute', top: 36, right: 52, opacity: 0.5 }} />
-            <Sparkles size={10} color={RED} style={{ position: 'absolute', top: 16, left: 40, opacity: 0.6 }} />
-          </>
-        )}
-
-        {/* Mascot */}
+        {/* Top accent line — animated while loading, solid when done */}
         <div style={{
-          animation: completed ? 'mascotBounce 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards' : 'mascotFloat 2.4s ease-in-out infinite',
-          marginBottom: 8,
+          position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+          background: completed
+            ? `linear-gradient(90deg, #22C55E, ${RED})`
+            : `linear-gradient(90deg, ${RED}, #FF4D4D, ${RED})`,
+          backgroundSize: '200% auto',
+          animation: completed ? 'none' : 'gradientSlide 1.8s linear infinite',
+        }} />
+
+        {/* Batch pill — always visible */}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '4px 12px', borderRadius: 20, marginBottom: 20,
+          background: `${RED}0D`, border: `1px solid ${RED}22`,
+          fontSize: 10, fontWeight: 800, letterSpacing: 1.5,
+          textTransform: 'uppercase', color: RED,
         }}>
-          <EggMascot done={completed} />
+          <Package size={11} strokeWidth={2.5} />
+          {batchName || 'Processing'}
         </div>
 
-        {/* Mini QR draw + batch badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <QRDrawAnimation progress={progress} />
-          <div>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', color: RED, background: `${RED}10`, border: `1px solid ${RED}20`, padding: '3px 10px', borderRadius: 20, marginBottom: 4 }}>
-              <Package size={11} /> {batchName}
-            </span>
-            <p style={{ margin: 0, fontSize: 11, color: '#6B7280', fontWeight: 600 }}>
-              {completed ? `${total} QR codes ready` : `${done} / ${total} generated`}
-            </p>
-          </div>
-        </div>
+        {/* Confetti only on success */}
+        {completed && <ConfettiParticles />}
 
-        {/* Message */}
-        <p style={{
-          fontSize: 13, fontWeight: 700, color: '#1A1A1A', textAlign: 'center',
-          margin: '0 0 20px', lineHeight: 1.55, minHeight: 40,
-        }}>
-          {completed ? `🎉 Your QR batch has been generated successfully!` : message}
-        </p>
-
-        {/* Progress bar */}
-        {!completed && (
-          <div style={{ width: '100%', marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>Generating QR Codes</span>
-              <span style={{ fontSize: 11, fontWeight: 800, color: RED }}>{Math.round(progress)}%</span>
-            </div>
-            <div style={{ height: 10, borderRadius: 8, background: '#F3F4F6', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 8,
-                background: `linear-gradient(90deg,${RED},#FF6B6B)`,
-                width: `${progress}%`,
-                transition: 'width 400ms ease',
-                backgroundSize: '200% auto',
-                animation: 'gradientSlide 1.5s linear infinite',
-              }} />
-            </div>
-            {etaSecs !== null && (
-              <p style={{ fontSize: 10, color: '#9CA3AF', margin: '5px 0 0', textAlign: 'right' }}>
-                ~{etaSecs}s remaining
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Completed actions */}
-        {completed && (
-          <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-            <button
-              onClick={onDownload}
-              style={{
-                flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
-                background: `linear-gradient(135deg,${RED},#B51218)`, color: '#fff',
-                fontSize: 13, fontWeight: 800, cursor: 'pointer',
-                boxShadow: `0 4px 14px ${RED}30`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-              }}
-            >
-              <Download size={14} strokeWidth={2.5} /> Download PNGs
-            </button>
-            <button
-              onClick={onClose}
-              style={{
-                padding: '12px 20px', borderRadius: 12,
-                background: '#F3F4F6', border: '1px solid #E5E7EB',
-                color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              }}
-            >
-              Close
-            </button>
-          </div>
+        {/* Conditional body */}
+        {completed ? (
+          <SuccessView
+            total={total}
+            batchName={batchName}
+            onDownload={onDownload}
+            onClose={onClose}
+          />
+        ) : (
+          <LoadingView
+            progress={progress}
+            done={done}
+            total={total}
+            message={message}
+            etaSecs={etaSecs}
+          />
         )}
       </div>
 
       <style>{`
-        @keyframes gradientSlide { to { background-position: 200% center; } }
-        @keyframes mascotFloat {
-          0%, 100% { transform: translateY(0); }
-          50%       { transform: translateY(-8px); }
-        }
-        @keyframes mascotBounce {
-          0%   { transform: scale(1); }
-          40%  { transform: scale(1.12); }
-          70%  { transform: scale(0.95); }
-          100% { transform: scale(1); }
-        }
+        @keyframes gradientSlide   { to { background-position: 200% center; } }
+        @keyframes glowPulse       { 0%,100% { opacity:0.6; transform:scale(1); } 50% { opacity:1; transform:scale(1.06); } }
+        @keyframes scanLine        { 0%,100% { top:10%; opacity:0.8; } 50% { top:85%; opacity:1; } }
+        @keyframes illustrationPop { 0% { transform:scale(0.88); opacity:0; } 100% { transform:scale(1); opacity:1; } }
+        @keyframes shieldPop       { 0% { transform:scale(0) rotate(-20deg); opacity:0; } 100% { transform:scale(1) rotate(0deg); opacity:1; } }
+        @keyframes confettiFall    { 0% { transform:translateY(-10px) rotate(0deg); opacity:1; } 100% { transform:translateY(120px) rotate(360deg); opacity:0; } }
       `}</style>
     </div>,
     document.body,
