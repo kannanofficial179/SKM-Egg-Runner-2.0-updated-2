@@ -509,25 +509,66 @@ export async function bulkDeleteByIds(ids: string[]): Promise<number> {
 // ── Operation Log ─────────────────────────────────────────────────────────────
 
 export interface OpLog {
-  id:        string;
-  operation: string;
-  type:      string;
-  count:     number;
-  actor:     string;
-  ts:        Date;
+  id:            string;
+  operation:     string;
+  type:          string;
+  count:         number;
+  actor:         string;
+  ts:            Date;
+  // Extended fields (optional — older logs may not have them)
+  reason?:       string;
+  batchName?:    string;
+  qrIds?:        string[];
+  durationMs?:   number;
+  status?:       'success' | 'failed';
+  browser?:      string;
+  device?:       string;
 }
 
-export async function writeOpLog(operation: string, type: string, count: number, actor: string): Promise<void> {
+export interface WriteOpLogOptions {
+  reason?:     string;
+  batchName?:  string;
+  qrIds?:      string[];
+  durationMs?: number;
+  status?:     'success' | 'failed';
+}
+
+function getBrowserInfo(): { browser: string; device: string } {
+  const ua = navigator.userAgent;
+  let browser = 'Unknown';
+  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+  else if (ua.includes('Firefox'))  browser = 'Firefox';
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+  else if (ua.includes('Edg'))      browser = 'Edge';
+  const device = /Mobi|Android|iPhone|iPad/i.test(ua) ? 'Mobile' : 'Desktop';
+  return { browser, device };
+}
+
+export async function writeOpLog(
+  operation: string,
+  type: string,
+  count: number,
+  actor: string,
+  opts: WriteOpLogOptions = {},
+): Promise<void> {
+  const { browser, device } = getBrowserInfo();
   await addDoc(collection(db, 'qrOperationLogs'), {
     operation,
     type,
     count,
     actor,
-    ts: serverTimestamp(),
+    ts:          serverTimestamp(),
+    reason:      opts.reason     ?? '',
+    batchName:   opts.batchName  ?? '',
+    qrIds:       opts.qrIds      ?? [],
+    durationMs:  opts.durationMs ?? 0,
+    status:      opts.status     ?? 'success',
+    browser,
+    device,
   });
 }
 
-export async function fetchOpLogs(limit = 50): Promise<OpLog[]> {
+export async function fetchOpLogs(limit = 100): Promise<OpLog[]> {
   try {
     const snap = await getDocs(
       query(collection(db, 'qrOperationLogs'), orderBy('ts', 'desc'))
@@ -535,12 +576,19 @@ export async function fetchOpLogs(limit = 50): Promise<OpLog[]> {
     return snap.docs.slice(0, limit).map(d => {
       const data = d.data();
       return {
-        id:        d.id,
-        operation: data.operation ?? '',
-        type:      data.type      ?? '',
-        count:     data.count     ?? 0,
-        actor:     data.actor     ?? 'Admin',
-        ts:        (data.ts as Timestamp)?.toDate() ?? new Date(),
+        id:          d.id,
+        operation:   data.operation  ?? '',
+        type:        data.type       ?? '',
+        count:       data.count      ?? 0,
+        actor:       data.actor      ?? 'Admin',
+        ts:          (data.ts as Timestamp)?.toDate() ?? new Date(),
+        reason:      data.reason     ?? '',
+        batchName:   data.batchName  ?? '',
+        qrIds:       data.qrIds      ?? [],
+        durationMs:  data.durationMs ?? 0,
+        status:      data.status     ?? 'success',
+        browser:     data.browser    ?? '',
+        device:      data.device     ?? '',
       };
     });
   } catch {

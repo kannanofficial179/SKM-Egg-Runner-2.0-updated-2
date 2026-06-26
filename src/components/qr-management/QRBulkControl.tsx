@@ -47,33 +47,148 @@ function typeStyle(t: string): React.CSSProperties {
   return                        { background: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' };
 }
 
-// ─── Confirmation Dialog ──────────────────────────────────────────────────────
+// ─── Delete Confirmation Modal (with mandatory reason) ────────────────────────
 
-function ConfirmDialog({ count, onConfirm, onCancel }: { count: number; onConfirm: () => void; onCancel: () => void }) {
-  const [typed, setTyped] = useState('');
-  const ready = typed.trim() === 'DELETE';
+const REASON_EXAMPLES = [
+  'Duplicate batch created by mistake',
+  'Deleted after successful printing',
+  'Expired campaign — codes no longer needed',
+  'Testing data cleanup',
+  'Customer requested removal',
+];
+
+interface DeleteConfirmProps {
+  count:      number;
+  batchNames: string[];
+  onConfirm:  (reason: string) => void;
+  onCancel:   () => void;
+}
+
+function DeleteConfirmModal({ count, batchNames, onConfirm, onCancel }: DeleteConfirmProps) {
+  const [reason,      setReason]      = useState('');
+  const [reasonError, setReasonError] = useState(false);
+
+  const ready = reason.trim().length >= 5;
+
+  const handleSubmit = () => {
+    if (!ready) { setReasonError(true); return; }
+    onConfirm(reason.trim());
+  };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 10100, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: '#FFFFFF', border: '1px solid #FECACA', borderRadius: 20, padding: 28, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, marginBottom: 16, background: '#FEF2F2', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Trash2 size={22} strokeWidth={2} color={DANGER} />
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 10100,
+      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div style={{
+        background: '#FFFFFF', borderRadius: 22,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.2), 0 0 0 1px rgba(220,38,38,0.12)',
+        width: '100%', maxWidth: 440,
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ background: '#FFF5F5', borderBottom: '1px solid #FECACA', padding: '20px 24px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: '#FEE2E2', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Trash2 size={20} strokeWidth={2} color={DANGER} />
+          </div>
+          <div>
+            <h3 style={{ color: '#1A1A1A', fontSize: 16, fontWeight: 900, margin: '0 0 4px' }}>
+              Permanently Delete QR Codes
+            </h3>
+            <p style={{ color: '#6B7280', fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+              This action cannot be undone. Affected records will be removed from Firebase.
+            </p>
+          </div>
         </div>
-        <h3 style={{ color: '#1A1A1A', fontSize: 17, fontWeight: 900, margin: '0 0 8px' }}>
-          Delete {count} QR Code{count !== 1 ? 's' : ''}?
-        </h3>
-        <p style={{ color: '#6B7280', fontSize: 13, margin: '0 0 18px', lineHeight: 1.6 }}>
-          This permanently removes the selected QR codes from Firebase. This action cannot be undone.
-        </p>
-        <p style={{ color: DANGER, fontSize: 11, fontWeight: 700, margin: '0 0 7px' }}>
-          Type <strong>DELETE</strong> to confirm:
-        </p>
-        <input autoFocus value={typed} onChange={e => setTyped(e.target.value)}
-          placeholder='Type "DELETE" here'
-          style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 13, background: '#F9FAFB', border: `1.5px solid ${typed === 'DELETE' ? SAFE : '#E5E7EB'}`, color: '#1A1A1A', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', marginBottom: 18, transition: 'border-color 150ms' }} />
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onCancel} style={{ flex: 1, padding: '11px 0', borderRadius: 12, fontSize: 13, fontWeight: 700, background: '#F3F4F6', border: '1px solid #E5E7EB', color: '#374151', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={onConfirm} disabled={!ready} style={{ flex: 1, padding: '11px 0', borderRadius: 12, fontSize: 13, fontWeight: 800, background: ready ? `linear-gradient(135deg,${DANGER},#B91C1C)` : '#F3F4F6', border: 'none', color: ready ? '#fff' : '#9CA3AF', cursor: ready ? 'pointer' : 'not-allowed', boxShadow: ready ? `0 4px 12px ${DANGER}30` : 'none' }}>Confirm Delete</button>
+
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* What will be deleted */}
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '14px 16px' }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: 0.8 }}>You are about to permanently delete:</p>
+            {batchNames.length > 0 && (
+              <p style={{ fontSize: 13, fontWeight: 800, color: '#1A1A1A', margin: '0 0 4px' }}>
+                {batchNames.slice(0, 3).join(', ')}{batchNames.length > 3 ? ` +${batchNames.length - 3} more` : ''}
+              </p>
+            )}
+            <p style={{ fontSize: 22, fontWeight: 900, color: DANGER, margin: 0, lineHeight: 1 }}>
+              {count} <span style={{ fontSize: 13, fontWeight: 600, color: '#6B7280' }}>QR Code{count !== 1 ? 's' : ''}</span>
+            </p>
+          </div>
+
+          {/* Mandatory reason */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Reason for Deletion <span style={{ color: DANGER }}>*</span>
+            </label>
+            <textarea
+              autoFocus
+              value={reason}
+              onChange={e => { setReason(e.target.value); setReasonError(false); }}
+              placeholder={`e.g. "${REASON_EXAMPLES[Math.floor(Date.now() / 1000) % REASON_EXAMPLES.length]}"`}
+              rows={3}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '10px 13px', borderRadius: 10, fontSize: 13,
+                background: '#F9FAFB',
+                border: `1.5px solid ${reasonError ? DANGER : reason.trim().length >= 5 ? SAFE : '#E5E7EB'}`,
+                color: '#1A1A1A', outline: 'none', resize: 'vertical',
+                fontFamily: 'system-ui,-apple-system,sans-serif',
+                lineHeight: 1.5, transition: 'border-color 150ms',
+              }}
+            />
+            {reasonError && (
+              <p style={{ fontSize: 11, color: DANGER, fontWeight: 600, margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <AlertTriangle size={11} /> Reason is required before deletion can proceed.
+              </p>
+            )}
+            {!reasonError && reason.trim().length > 0 && reason.trim().length < 5 && (
+              <p style={{ fontSize: 10, color: '#9CA3AF', margin: '4px 0 0' }}>
+                Keep typing… ({reason.trim().length}/5 min characters)
+              </p>
+            )}
+            <p style={{ fontSize: 10, color: '#9CA3AF', margin: '6px 0 0' }}>
+              This reason will be stored permanently in the operation audit log.
+            </p>
+          </div>
+
+          {/* Quick-fill reason pills */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {REASON_EXAMPLES.slice(0, 3).map(ex => (
+              <button
+                key={ex}
+                onClick={() => { setReason(ex); setReasonError(false); }}
+                style={{ padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, border: '1px solid #E5E7EB', background: '#F3F4F6', color: '#6B7280', cursor: 'pointer' }}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+            <button
+              onClick={onCancel}
+              style={{ flex: 1, padding: '12px 0', borderRadius: 12, fontSize: 13, fontWeight: 700, background: '#F3F4F6', border: '1px solid #E5E7EB', color: '#374151', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              style={{
+                flex: 1, padding: '12px 0', borderRadius: 12, fontSize: 13, fontWeight: 800, border: 'none', cursor: 'pointer',
+                background: ready ? `linear-gradient(135deg,${DANGER},#B91C1C)` : '#F3F4F6',
+                color: ready ? '#fff' : '#9CA3AF',
+                boxShadow: ready ? `0 4px 14px ${DANGER}30` : 'none',
+                transition: 'all 200ms',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              }}
+            >
+              <Trash2 size={14} strokeWidth={2.5} />
+              Delete Permanently
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -132,9 +247,10 @@ function DeleteCenterModal({ onClose, onRefresh, actor }: DeleteCenterProps) {
   const [loading,  setLoading]  = useState(true);
   const [tab,      setTab]      = useState<FilterTab>('today');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [confirm,  setConfirm]  = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [success,  setSuccess]  = useState<{ count: number; batches: string[]; ts: string } | null>(null);
+  const [confirm,      setConfirm]      = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [success,      setSuccess]      = useState<{ count: number; batches: string[]; ts: string } | null>(null);
+  const startTimeRef = React.useRef<number>(0);
 
   useEffect(() => {
     fetchAllQRCodes().then(all => { setCodes(all); setLoading(false); });
@@ -171,16 +287,28 @@ function DeleteCenterModal({ onClose, onRefresh, actor }: DeleteCenterProps) {
   const toggleOne   = (id: string) => setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const selectBatch = (batch: string) => setSelected(prev => { const s = new Set(prev); filtered.filter(c => c.batch === batch).forEach(c => s.add(c.id)); return s; });
 
-  const handleDelete = async () => {
+  const handleDelete = async (reason: string) => {
     setDeleting(true); setConfirm(false);
+    const t0 = Date.now();
     try {
       const ids = [...selected];
-      const batches = [...new Set(codes.filter(c => ids.includes(c.id)).map(c => c.batch).filter(Boolean))];
+      const affectedCodes = codes.filter(c => ids.includes(c.id));
+      const batches = [...new Set(affectedCodes.map(c => c.batch).filter(Boolean))];
       const n = await bulkDeleteByIds(ids);
-      await writeOpLog('delete-selected', 'Regular', n, actor);
+      const durationMs = Date.now() - t0;
+      await writeOpLog('delete-selected', 'Regular', n, actor, {
+        reason,
+        batchName:  batches.slice(0, 5).join(', '),
+        qrIds:      ids.slice(0, 50),
+        durationMs,
+        status:     'success',
+      });
       onRefresh();
       setSuccess({ count: n, batches, ts: new Date().toLocaleTimeString() });
-    } catch (e: any) { alert(e?.message ?? 'Delete failed.'); }
+    } catch (e: any) {
+      await writeOpLog('delete-selected', 'Regular', 0, actor, { reason, status: 'failed' }).catch(() => {});
+      alert(e?.message ?? 'Delete failed.');
+    }
     finally { setDeleting(false); }
   };
 
@@ -328,7 +456,14 @@ function DeleteCenterModal({ onClose, onRefresh, actor }: DeleteCenterProps) {
         </div>
       </div>
 
-      {confirm && <ConfirmDialog count={selected.size} onCancel={() => setConfirm(false)} onConfirm={handleDelete} />}
+      {confirm && (
+        <DeleteConfirmModal
+          count={selected.size}
+          batchNames={[...new Set(codes.filter(c => selected.has(c.id)).map(c => c.batch).filter(Boolean))]}
+          onCancel={() => setConfirm(false)}
+          onConfirm={handleDelete}
+        />
+      )}
       <style>{`@keyframes bcspin { to { transform: rotate(360deg); } }`}</style>
     </>
   );

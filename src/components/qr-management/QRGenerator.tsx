@@ -342,12 +342,32 @@ interface GenerationModalProps {
 
 function GenerationModal({ progress, done, total, message, completed, batchName, onDownload, onClose }: GenerationModalProps) {
   const [visible, setVisible] = useState(false);
-  useEffect(() => { const t = requestAnimationFrame(() => setVisible(true)); return () => cancelAnimationFrame(t); }, []);
+  // Track real start time and first-progress time to compute actual throughput
+  const startTimeRef  = useRef<number>(Date.now());
+  const firstDoneRef  = useRef<number | null>(null);
 
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+    firstDoneRef.current = null;
+    const t = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
+  // Record when we first receive progress
+  useEffect(() => {
+    if (done > 0 && firstDoneRef.current === null) {
+      firstDoneRef.current = Date.now();
+    }
+  }, [done]);
+
+  // ETA: calculated from actual observed throughput, never hardcoded
   const etaSecs = (() => {
-    if (done === 0 || done >= total) return null;
+    if (done === 0 || done >= total || !firstDoneRef.current) return null;
+    const elapsed = (Date.now() - firstDoneRef.current) / 1000;
+    const rate = done / elapsed; // codes per second (actual)
+    if (rate <= 0) return null;
     const remaining = total - done;
-    return Math.ceil((remaining * 55) / 1000);
+    return Math.ceil(remaining / rate);
   })();
 
   return ReactDOM.createPortal(
@@ -570,9 +590,9 @@ export default function QRGenerator({ onGenerated }: Props) {
         {/* Large-batch warning */}
         {form.quantity > 100 && (
           <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>⏱</span>
+            <Clock size={14} color="#92400E" style={{ flexShrink: 0 }} />
             <p style={{ fontSize: 11, color: '#92400E', margin: 0, fontWeight: 600 }}>
-              Generating {form.quantity} QR codes. This may take ~{Math.ceil(form.quantity * 0.06)}s. A progress screen will appear.
+              Generating {form.quantity} QR codes. A progress screen will appear — time varies by network speed.
             </p>
           </div>
         )}
