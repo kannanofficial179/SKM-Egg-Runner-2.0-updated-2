@@ -115,35 +115,34 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   };
 
   // ── RUN NOW ───────────────────────────────────────────────────────────────
-  // Fire sound + game start on pointerdown so there is zero click-delay on
-  // mobile. A ref guard prevents double-fires from rapid taps.
+  // pointerdown fires before the 300ms click delay on Android/iOS.
+  // A ref guard prevents double-fires from rapid taps.
   const runNowFiredRef = React.useRef(false);
 
-  const handleRunNowPointerDown = React.useCallback(() => {
+  const handleRunNowPointerDown = React.useCallback((e: React.PointerEvent) => {
+    // Only handle primary pointer (left-click / first touch finger)
+    if (e.button !== 0 && e.pointerType !== 'touch') return;
     if (runNowFiredRef.current) return;
     runNowFiredRef.current = true;
+    // Stop propagation so the backdrop overlay doesn't swallow the event
+    e.stopPropagation();
     soundManager.playClick();
     onStartGame();
-    // Reset guard after a short window so the button works again if the
-    // game transitions back to MENU (e.g. after a failed QR consume).
+    // Reset after 800 ms so the button is live again if game returns to MENU
     setTimeout(() => { runNowFiredRef.current = false; }, 800);
   }, [onStartGame]);
 
-  // onClick is kept as a no-op fallback for keyboard/accessibility — the real
-  // action already fired on pointerdown, so we suppress the synthetic click.
-  const handleRunNowClick = React.useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-  }, []);
-
   return (
-    <div
-      className="absolute inset-0 z-20 flex flex-col justify-between p-6 pointer-events-none"
-      style={{
-        background: 'linear-gradient(to bottom, rgba(2,6,23,0.45) 0%, transparent 40%, rgba(2,6,23,0.75) 100%)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-      }}
-    >
+    <div className="absolute inset-0 z-20 flex flex-col justify-between p-6 pointer-events-none">
+      {/* Visual backdrop — isolated so backdrop-filter never sits on the touch path */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(2,6,23,0.45) 0%, transparent 40%, rgba(2,6,23,0.75) 100%)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+        }}
+      />
 
       {/* ── Top buttons ── */}
       <div className="flex justify-between items-start w-full pointer-events-auto">
@@ -205,16 +204,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         </div>
 
         <div className="flex flex-col gap-3 min-w-64 max-w-xs w-full">
-          {/* RUN NOW — fires on pointerdown for zero-latency response on mobile */}
+          {/* RUN NOW — pointerdown fires immediately on first touch, no 300ms delay */}
           <button
             id="btn_play_now"
             onPointerDown={handleRunNowPointerDown}
-            onClick={handleRunNowClick}
-            className="group relative bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 bg-[length:200%_auto] hover:bg-right hover:scale-105 text-slate-950 font-black py-4 px-6 rounded-2xl shadow-xl shadow-yellow-500/30 transition-all duration-300 active:scale-95 flex flex-col items-center justify-center gap-0.5 text-lg uppercase cursor-pointer tracking-wider"
-            style={{ animation: 'runnowBounce 1.8s ease-in-out infinite' }}
+            className="group relative bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 bg-[length:200%_auto] hover:bg-right hover:scale-105 text-slate-950 font-black py-4 px-6 rounded-2xl shadow-xl shadow-yellow-500/30 transition-all duration-300 active:scale-95 flex flex-col items-center justify-center gap-0.5 text-lg uppercase tracking-wider"
+            style={{
+              animation: 'runnowBounce 1.8s ease-in-out infinite',
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
+              cursor: 'pointer',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+            }}
           >
-            <div className="absolute inset-0 rounded-2xl bg-white/25 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="flex items-center gap-2">
+            <div className="absolute inset-0 rounded-2xl bg-white/25 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            <div className="flex items-center gap-2 pointer-events-none">
               <Play className="w-4 h-4 fill-slate-950" />
               <span className="text-base font-extrabold font-sans">RUN NOW</span>
             </div>
