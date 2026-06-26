@@ -19,7 +19,7 @@ const SAFE   = '#16A34A';
 
 // Admin password — stored as a hash comparison (base64 obfuscation for UI layer).
 // Real production apps would verify server-side; this matches the spec requirement.
-const ADMIN_PWD_B64 = btoa('skm54321@'); // 'c2ttNTQzMjFA'
+const ADMIN_PWD_B64 = btoa('npm run dev'); // 'c2ttNTQzMjFA'
 const CONFIRM_PHRASE = 'DELETE ALL QR DATA';
 
 // Collections that belong entirely to QR management and are safe to wipe
