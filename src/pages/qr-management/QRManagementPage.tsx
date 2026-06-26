@@ -213,7 +213,7 @@ export default function QRManagementPage({ onBack }: Props) {
   // ── Render active tab content ─────────────────────────────────────────────
   const renderTab = () => {
     switch (activeTab) {
-      case 'dashboard': return <QRDashboard stats={stats} loading={loadingStats} error={statsError} />;
+      case 'dashboard': return <QRDashboard stats={stats} loading={loadingStats} error={statsError} codes={codes} actor={actor} onNavigate={(tab) => navigate(tab as any)} onRefresh={refresh} />;
       case 'generator': return <QRGenerator onGenerated={refresh} />;
       case 'search':    return <QRSearch />;
       case 'actions':   return <QRActions onRefresh={refresh} actor={actor} />;
