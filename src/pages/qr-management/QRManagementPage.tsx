@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   QrCode, RefreshCw, ArrowLeft,
   LayoutDashboard, Plus, Search, Zap, Layers3,
-  BarChart3, Activity, Printer, Trash2, Settings, Menu,
+  BarChart3, Activity, Printer, Trash2, Settings, Menu, ScanSearch,
 } from 'lucide-react';
 import { subscribeDashboardStats, fetchAllQRCodes, EMPTY_STATS } from '../../services/qr/qrManagementService';
 import type { QRDashboardStats, QRCodeRecord } from '../../types/qr/qrManagementTypes';
@@ -17,6 +17,7 @@ import QRAnalytics     from '../../components/qr-management/QRAnalytics';
 import QROperationLogs from '../../components/qr-management/QROperationLogs';
 import QRPrintCenter   from '../../components/qr-management/QRPrintCenter';
 import QRSettings      from '../../components/qr-management/QRSettings';
+import QRTracker      from '../../components/qr-management/QRTracker';
 
 const RED = '#D71920';
 
@@ -30,7 +31,7 @@ const STORAGE_KEY = 'qr_sidebar_collapsed';
 
 type TabId =
   | 'dashboard' | 'generator' | 'search'   | 'actions'
-  | 'bulk'      | 'analytics' | 'activity' | 'print'
+  | 'bulk'      | 'analytics' | 'tracker'  | 'activity' | 'print'
   | 'delete'    | 'settings';
 
 interface Tab {
@@ -47,6 +48,7 @@ const TABS: Tab[] = [
   { id: 'actions',   label: 'Actions',      icon: <Zap             size={17} strokeWidth={2} /> },
   { id: 'bulk',      label: 'Bulk Actions', icon: <Layers3         size={17} strokeWidth={2} /> },
   { id: 'analytics', label: 'Analytics',    icon: <BarChart3       size={17} strokeWidth={2} /> },
+  { id: 'tracker',   label: 'QR Tracker',   icon: <ScanSearch      size={17} strokeWidth={2} /> },
   { id: 'activity',  label: 'Activity',     icon: <Activity        size={17} strokeWidth={2} /> },
   { id: 'print',     label: 'Print',        icon: <Printer         size={17} strokeWidth={2} /> },
   { id: 'delete',    label: 'Delete',       icon: <Trash2          size={17} strokeWidth={2} />, badge: 'danger' },
@@ -60,6 +62,7 @@ const TAB_TITLES: Record<TabId, { title: string; subtitle: string }> = {
   actions:   { title: 'QR Actions',   subtitle: 'Enable, disable or control QR codes by type' },
   bulk:      { title: 'Bulk Actions', subtitle: 'Large-scale QR operations and data export' },
   analytics: { title: 'Analytics',    subtitle: 'Scan trends, usage rates and performance reports' },
+  tracker:   { title: 'QR Tracker',   subtitle: 'Full lifecycle tracking and per-QR inspection' },
   activity:  { title: 'Activity Logs',subtitle: 'Complete audit trail of all admin operations' },
   print:     { title: 'Print Center', subtitle: 'Generate A4 PDF print sheets for packaging' },
   delete:    { title: 'Delete Center',subtitle: 'Safe, filtered deletion of QR codes' },
@@ -221,6 +224,7 @@ export default function QRManagementPage({ onBack }: Props) {
         </div>
       );
       case 'analytics': return <QRAnalytics />;
+      case 'tracker':   return <QRTracker codes={codes} onRefresh={refresh} actor={actor} />;
       case 'activity':  return <QROperationLogs refreshKey={refreshKey} />;
       case 'print':     return <QRPrintCenter codes={codes} actor={actor} />;
       case 'delete':    return <QRBulkControl onRefresh={refresh} actor={actor} />;
