@@ -19,7 +19,7 @@ const SAFE   = '#16A34A';
 
 // Passwords stored as base64 so they are not plain-text in the bundle.
 // Game Link update password: skm543212@
-const GAME_LINK_PWD_B64 = btoa('skm543212@');
+const GAME_LINK_PWD_B64 = btoa('skm54321@');
 // Delete All QR Data password: npm run dev
 const RESET_PWD_B64     = btoa('npm run dev');
 
