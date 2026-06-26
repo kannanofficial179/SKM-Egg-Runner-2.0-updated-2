@@ -13,6 +13,7 @@ interface MainMenuProps {
   onOpenSettings: (initialView: 'SETTINGS' | 'DEV_LOGIN') => void;
   onOpenProfile: () => void;
   onClaimDailyReward: (rewardType: 'feeds' | 'gems', value: number) => void;
+  playSession?: { remainingAttempts: number; unlimited?: boolean } | null;
 }
 
 export const DailyRewardsList = [
@@ -36,6 +37,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenSettings,
   onOpenProfile,
   onClaimDailyReward,
+  playSession,
 }) => {
   const canClaimDaily = React.useMemo(() => {
     if (!stats.lastDailyRewardClaim) return true;
@@ -190,18 +192,39 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         </div>
 
         <div className="flex flex-col gap-3 min-w-64 max-w-xs w-full">
-          {/* RUN NOW — starts game directly (QR already validated at module select) */}
-          <button
-            id="btn_play_now"
-            onClick={handleRunNow}
-            className="group relative bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 bg-[length:200%_auto] hover:bg-right hover:scale-105 text-slate-950 font-black py-4 px-6 rounded-2xl shadow-xl shadow-yellow-500/30 transition-all duration-300 active:scale-95 flex flex-col items-center justify-center gap-0.5 text-lg uppercase cursor-pointer tracking-wider animate-bounce"
-          >
-            <div className="absolute inset-0 rounded-2xl bg-white/25 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="flex items-center gap-2">
-              <Play className="w-4 h-4 fill-slate-950" />
-              <span className="text-base font-extrabold font-sans">RUN NOW</span>
-            </div>
-          </button>
+          {/* RUN NOW — starts game if QR session is active, else prompts re-scan */}
+          {playSession ? (
+            <button
+              id="btn_play_now"
+              onClick={handleRunNow}
+              className="group relative bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 bg-[length:200%_auto] hover:bg-right hover:scale-105 text-slate-950 font-black py-4 px-6 rounded-2xl shadow-xl shadow-yellow-500/30 transition-all duration-300 active:scale-95 flex flex-col items-center justify-center gap-0.5 text-lg uppercase cursor-pointer tracking-wider animate-bounce"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-white/25 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex items-center gap-2">
+                <Play className="w-4 h-4 fill-slate-950" />
+                <span className="text-base font-extrabold font-sans">RUN NOW</span>
+              </div>
+              {!playSession.unlimited && (
+                <span className="text-[10px] font-bold opacity-70">
+                  {playSession.remainingAttempts} play{playSession.remainingAttempts !== 1 ? 's' : ''} left
+                </span>
+              )}
+            </button>
+          ) : (
+            <button
+              id="btn_play_now"
+              onClick={handleRunNow}
+              className="group relative bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 text-slate-200 font-black py-4 px-6 rounded-2xl shadow-xl shadow-slate-900/50 transition-all duration-300 active:scale-95 flex flex-col items-center justify-center gap-0.5 text-lg uppercase cursor-pointer tracking-wider border border-slate-500/40"
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span className="text-base font-extrabold font-sans">Scan QR to Play</span>
+              </div>
+              <span className="text-[10px] font-bold opacity-60">Tap to scan a new QR code</span>
+            </button>
+          )}
 
           <div className="grid grid-cols-4 gap-1.5">
             <button
