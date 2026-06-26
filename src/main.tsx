@@ -111,6 +111,19 @@ function AppRoot() {
     }
   }, [user?.uid]);
 
+  // Stop BGM when entering QR Management; resume when leaving.
+  // soundManager is a singleton whose BGM sequencer keeps running across
+  // screen transitions unless explicitly stopped here.
+  useEffect(() => {
+    if (screen === 'QR_MANAGEMENT') {
+      soundManager.stopMusic();
+      console.log('[AUDIO] Route: /codes — Game BGM stopped.');
+    } else if (screen === 'GAME') {
+      soundManager.startMusic();
+      console.log('[AUDIO] Route: / — Game BGM resumed.');
+    }
+  }, [screen]);
+
   // ── Loading splash ────────────────────────────────────────────────────────
   if (user === undefined || (user && profileStatus === 'CHECKING')) {
     const dataReady = user !== undefined && profileStatus !== 'CHECKING';

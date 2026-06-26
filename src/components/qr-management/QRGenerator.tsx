@@ -564,22 +564,7 @@ export default function QRGenerator({ onGenerated }: Props) {
       <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 18, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
         {/* Active game link — fetched from Firestore at generation time; this banner stays live via subscription */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '9px 13px', background: '#F0FDF4',
-          border: '1px solid #BBF7D0', borderRadius: 10, marginBottom: 16,
-        }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 5px #22C55E80', flexShrink: 0 }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#15803D', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 0 }}>
-            Active Game Link:
-          </span>
-          <code style={{ fontSize: 11, color: '#15803D', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-            {liveGameUrl}
-          </code>
-          <span style={{ fontSize: 9, color: '#6B7280', fontWeight: 600, flexShrink: 0, background: '#E5E7EB', padding: '2px 7px', borderRadius: 10 }}>
-            fetched from Firestore on generate
-          </span>
-        </div>
+        
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 14, marginBottom: 18 }}>
           <div>
