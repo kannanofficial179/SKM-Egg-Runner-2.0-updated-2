@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import QRCode from 'qrcode';
 import { Plus, Download, CheckCircle2, XCircle, ShieldCheck, Package, Printer, Clock, Link2, QrCode as QrCodeIcon } from 'lucide-react';
 import type { QRCodeType, QRGeneratorForm } from '../../types/qr/qrManagementTypes';
-import { generateQRCodes } from '../../services/qr/qrManagementService';
+import { generateQRCodes, getGameUrl, subscribeGameUrl, syncGameUrlFromFirestore } from '../../services/qr/qrManagementService';
 
 const RED = '#D71920';
 
@@ -184,15 +184,11 @@ function LoadingView({ progress, done, total, message, etaSecs }: {
 
 // ─── Success view ─────────────────────────────────────────────────────────────
 
-function SuccessView({ total, batchName, onDownload, onClose }: {
-  total: number; batchName: string; onDownload: () => void; onClose: () => void;
+function SuccessView({ total, batchName, gameUrl, onDownload, onClose }: {
+  total: number; batchName: string; gameUrl: string; onDownload: () => void; onClose: () => void;
 }) {
   const [show, setShow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setShow(true), 40); return () => clearTimeout(t); }, []);
-
-  const gameUrl = (() => {
-    try { return localStorage.getItem('qr_game_url') || 'https://skm-egg-runner.vercel.app'; } catch { return '—'; }
-  })();
 
   const genTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -336,11 +332,12 @@ interface GenerationModalProps {
   message:     string;
   completed:   boolean;
   batchName:   string;
+  gameUrl:     string;
   onDownload:  () => void;
   onClose:     () => void;
 }
 
-function GenerationModal({ progress, done, total, message, completed, batchName, onDownload, onClose }: GenerationModalProps) {
+function GenerationModal({ progress, done, total, message, completed, batchName, gameUrl, onDownload, onClose }: GenerationModalProps) {
   const [visible, setVisible] = useState(false);
   // Track real start time and first-progress time to compute actual throughput
   const startTimeRef  = useRef<number>(Date.now());
@@ -423,6 +420,7 @@ function GenerationModal({ progress, done, total, message, completed, batchName,
           <SuccessView
             total={total}
             batchName={batchName}
+            gameUrl={gameUrl}
             onDownload={onDownload}
             onClose={onClose}
           />
@@ -458,6 +456,16 @@ export default function QRGenerator({ onGenerated }: Props) {
   const [form, setForm] = useState<QRGeneratorForm>({ prefix: 'SKM', quantity: 1, maxPlays: 2, type: 'Regular' });
   const [error,     setError]     = useState<string | null>(null);
   const [previews,  setPreviews]  = useState<QRPreviewItem[]>([]);
+
+  // Live game URL — subscribes to saveGameUrl() broadcasts so it updates
+  // the moment Settings saves, without any page refresh.
+  const [liveGameUrl, setLiveGameUrl] = useState(() => getGameUrl());
+  useEffect(() => {
+    // Sync from Firestore on mount to catch changes from other devices
+    syncGameUrlFromFirestore().then(url => setLiveGameUrl(url));
+    // Subscribe to in-page broadcasts from QRSettings
+    return subscribeGameUrl(url => setLiveGameUrl(url));
+  }, []);
 
   // Modal state
   const [showModal,    setShowModal]    = useState(false);
@@ -554,6 +562,21 @@ export default function QRGenerator({ onGenerated }: Props) {
       </div>
 
       <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 18, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+
+        {/* Active game link indicator — always live */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '9px 13px', background: '#F0FDF4',
+          border: '1px solid #BBF7D0', borderRadius: 10, marginBottom: 16,
+        }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 5px #22C55E80', flexShrink: 0 }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#15803D', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 0 }}>
+            Using Active Link:
+          </span>
+          <code style={{ fontSize: 11, color: '#15803D', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+            {liveGameUrl}
+          </code>
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 14, marginBottom: 18 }}>
           <div>
@@ -667,6 +690,7 @@ export default function QRGenerator({ onGenerated }: Props) {
           message={modalMsg}
           completed={modalComplete}
           batchName={batchName || `Batch`}
+          gameUrl={liveGameUrl}
           onDownload={handleDownloadAll}
           onClose={() => setShowModal(false)}
         />

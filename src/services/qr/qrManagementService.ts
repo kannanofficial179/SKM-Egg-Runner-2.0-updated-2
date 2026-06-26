@@ -5,6 +5,8 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  getDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -24,19 +26,93 @@ import type {
   QRAnalyticsData,
 } from '../../types/qr/qrManagementTypes';
 
-const COLLECTION = 'qrCodes';
+const COLLECTION       = 'qrCodes';
 const DEFAULT_BASE_URL = 'https://skm-egg-runner.vercel.app';
 
-// ── Game URL config (localStorage, set via QRSettings) ───────────────────────
-const GAME_URL_KEY    = 'qr_game_url';
-const BATCH_COUNT_KEY = 'qr_batch_count';
+// ── Game URL config ────────────────────────────────────────────────────────────
+// Source of truth priority: Firestore (skm_config/game_link) > localStorage > DEFAULT
+// On save: write both Firestore + localStorage + broadcast custom event so all
+// in-page components (QRSettings, QRGenerator) react without a page refresh.
+const GAME_URL_KEY      = 'qr_game_url';
+const BATCH_COUNT_KEY   = 'qr_batch_count';
+const GAME_URL_EVENT    = 'skm_game_url_changed';
+const CONFIG_DOC        = 'game_link';
+const CONFIG_COLLECTION = 'skm_config';
 
+/** Always returns the current active game URL. Reads localStorage (always fresh). */
 export function getGameUrl(): string {
-  try { return localStorage.getItem(GAME_URL_KEY) || DEFAULT_BASE_URL; } catch { return DEFAULT_BASE_URL; }
+  try {
+    const stored = localStorage.getItem(GAME_URL_KEY);
+    return stored ? stored.replace(/\/$/, '') : DEFAULT_BASE_URL;
+  } catch {
+    return DEFAULT_BASE_URL;
+  }
 }
 
-export function saveGameUrl(url: string): void {
-  try { localStorage.setItem(GAME_URL_KEY, url.replace(/\/$/, '')); } catch { /* ignore */ }
+/**
+ * Save a new game URL.
+ * 1. Validates and normalises the URL.
+ * 2. Writes to localStorage immediately (synchronous — available to `getGameUrl()` in the same tick).
+ * 3. Dispatches `skm_game_url_changed` custom event so sibling React components update without a page refresh.
+ * 4. Persists to Firestore (async, best-effort) so other devices pick it up.
+ */
+export async function saveGameUrl(url: string): Promise<void> {
+  const normalised = url.trim().replace(/\/$/, '');
+  const previous   = getGameUrl();
+
+  // Write to localStorage first — synchronous, instant
+  try { localStorage.setItem(GAME_URL_KEY, normalised); } catch { /* ignore */ }
+
+  // Broadcast to all in-page listeners
+  window.dispatchEvent(new CustomEvent(GAME_URL_EVENT, { detail: { url: normalised } }));
+
+  // Debug log
+  console.group('[GAME LINK UPDATED]');
+  console.log('Old URL:', previous);
+  console.log('New URL:', normalised);
+  console.log('Timestamp:', new Date().toISOString());
+  console.groupEnd();
+
+  // Persist to Firestore (non-blocking)
+  try {
+    await setDoc(doc(db, CONFIG_COLLECTION, CONFIG_DOC), {
+      url:       normalised,
+      updatedAt: serverTimestamp(),
+    });
+    console.log('[GAME LINK] Firestore write complete:', normalised);
+  } catch (e: any) {
+    console.warn('[GAME LINK] Firestore write failed (localStorage still active):', e?.message);
+  }
+}
+
+/**
+ * Subscribe to game URL changes dispatched by saveGameUrl().
+ * Returns an unsubscribe function. Use in React components via useEffect.
+ */
+export function subscribeGameUrl(onChange: (url: string) => void): () => void {
+  const handler = (e: Event) => onChange((e as CustomEvent).detail.url);
+  window.addEventListener(GAME_URL_EVENT, handler);
+  return () => window.removeEventListener(GAME_URL_EVENT, handler);
+}
+
+/**
+ * Fetch the current game URL from Firestore and sync it to localStorage.
+ * Called once on component mount to ensure localStorage is up-to-date with
+ * any changes made on another device or browser.
+ */
+export async function syncGameUrlFromFirestore(): Promise<string> {
+  try {
+    const snap = await getDoc(doc(db, CONFIG_COLLECTION, CONFIG_DOC));
+    if (snap.exists()) {
+      const url = (snap.data().url as string)?.replace(/\/$/, '') || DEFAULT_BASE_URL;
+      try { localStorage.setItem(GAME_URL_KEY, url); } catch { /* ignore */ }
+      console.log('[GAME LINK] Synced from Firestore:', url);
+      return url;
+    }
+  } catch (e: any) {
+    console.warn('[GAME LINK] Firestore sync failed, using localStorage:', e?.message);
+  }
+  return getGameUrl();
 }
 
 // ── Readable batch name: "Batch 1", "Batch 2", … ─────────────────────────────
@@ -172,7 +248,16 @@ export async function generateQRCodes(
   onProgress?: (done: number, total: number) => void,
 ): Promise<GeneratedQR[]> {
   const { displayName, internalId } = nextBatchName();
-  const batchLabel = displayName; // e.g. "Batch 7"
+  const batchLabel  = displayName;
+  const activeGameUrl = getGameUrl(); // snapshot once at generation start
+
+  // Debug log — verifiable that the correct URL is being embedded
+  console.group('[QR GENERATOR]');
+  console.log('Using URL:', activeGameUrl);
+  console.log('Batch:', batchLabel, '| Prefix:', prefix, '| Quantity:', quantity, '| Type:', type);
+  console.log('Timestamp:', new Date().toISOString());
+  console.groupEnd();
+
   const codes: GeneratedQR[] = [];
 
   // Find highest existing index for this prefix to avoid duplicates
@@ -184,10 +269,10 @@ export async function generateQRCodes(
   // Golden QR codes get unlimited plays
   const effectiveMaxPlays = type === 'Golden' ? 999999 : maxPlays;
 
-  // Build all code/url pairs first (synchronous, instant)
+  // Build all code/url pairs — URL is captured from activeGameUrl above (not re-read per code)
   for (let i = 0; i < quantity; i++) {
     const code = buildCode(prefix, startIndex + i);
-    const url  = buildURL(code);
+    const url  = `${activeGameUrl}/?qr=${code}`;
     codes.push({ code, url });
   }
 
