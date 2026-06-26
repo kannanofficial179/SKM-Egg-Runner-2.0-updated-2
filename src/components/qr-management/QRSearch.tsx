@@ -5,10 +5,18 @@ import {
   X, CheckCircle2, QrCode as QrCodeIcon,
 } from 'lucide-react';
 import type { QRCodeRecord, QRSearchFilters } from '../../types/qr/qrManagementTypes';
-import { searchQRCodes, setQRActive } from '../../services/qr/qrManagementService';
+import { searchQRCodes, setQRActive, syncGameUrlFromFirestore } from '../../services/qr/qrManagementService';
 
-const RED     = '#D71920';
-const BASE    = 'https://skm-egg-runner.vercel.app';
+const RED = '#D71920';
+
+// Resolve the QR URL for a record: prefer the url field stored in Firestore
+// at generation time (always correct), fall back to live Settings fetch.
+async function resolveQRUrl(qr: any): Promise<string> {
+  if (qr.url) return qr.url as string;
+  const base = await syncGameUrlFromFirestore();
+  console.log('[QR PAYLOAD] URL embedded:', `${base}/?qr=${qr.code}`, '| Source: Firestore Settings (fallback)');
+  return `${base}/?qr=${qr.code}`;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -30,8 +38,10 @@ function fmtDate(d: Date) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-async function generateQRDataUrl(code: string): Promise<string> {
-  return QRCode.toDataURL(`${BASE}/?qr=${code}`, {
+async function generateQRDataUrl(qr: any): Promise<string> {
+  const url = await resolveQRUrl(qr);
+  console.log('[QR IMAGE] Generating with URL:', url);
+  return QRCode.toDataURL(url, {
     width: 300, margin: 2,
     color: { dark: '#1a0000', light: '#FFFFFF' },
     errorCorrectionLevel: 'H',
@@ -302,7 +312,7 @@ export default function QRSearch() {
   const handleView = useCallback(async (qr: QRCodeRecord) => {
     setLoadingQr(qr.code);
     try {
-      const dataUrl = await generateQRDataUrl(qr.code);
+      const dataUrl = await generateQRDataUrl(qr);
       setPreview({ qr, dataUrl });
     } finally { setLoadingQr(null); }
   }, []);
@@ -310,7 +320,7 @@ export default function QRSearch() {
   const handleDownloadDirect = useCallback(async (qr: QRCodeRecord) => {
     setLoadingQr(qr.code);
     try {
-      const dataUrl = await generateQRDataUrl(qr.code);
+      const dataUrl = await generateQRDataUrl(qr);
       downloadBlob(dataUrl, `${qr.code}.png`);
     } finally { setLoadingQr(null); }
   }, []);

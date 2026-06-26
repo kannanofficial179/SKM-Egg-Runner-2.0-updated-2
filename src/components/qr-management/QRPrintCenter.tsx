@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import QRCode from 'qrcode';
 import { Printer } from 'lucide-react';
 import type { QRCodeRecord } from '../../types/qr/qrManagementTypes';
-import { writeOpLog } from '../../services/qr/qrManagementService';
+import { writeOpLog, syncGameUrlFromFirestore } from '../../services/qr/qrManagementService';
 
 const RED  = '#D71920';
-const BASE = 'https://skm-egg-runner.vercel.app';
 
 type PrintFilter = 'all' | 'regular' | 'golden' | 'campaign' | 'developer';
 
@@ -14,8 +13,11 @@ const FILTER_LABELS: Record<PrintFilter, string> = {
   campaign: 'Campaign Only', developer: 'Developer Only',
 };
 
-async function makeQRDataUrl(code: string): Promise<string> {
-  return QRCode.toDataURL(`${BASE}/?qr=${code}`, {
+async function makeQRDataUrl(qr: QRCodeRecord, base: string): Promise<string> {
+  // Use the url field stored at generation time; fall back to live Settings URL
+  const url = (qr as any).url ?? `${base}/?qr=${qr.code}`;
+  console.log('[QR IMAGE] Print URL:', url, '| Code:', qr.code);
+  return QRCode.toDataURL(url, {
     width: 200, margin: 1,
     color: { dark: '#1a0000', light: '#FFFFFF' },
     errorCorrectionLevel: 'H',
@@ -23,12 +25,16 @@ async function makeQRDataUrl(code: string): Promise<string> {
 }
 
 async function printQRCodes(codes: QRCodeRecord[], actor: string): Promise<void> {
+  // Fetch active game link from Firestore once before rendering any QR images
+  const activeBase = await syncGameUrlFromFirestore();
+  console.log('[SETTINGS] Current URL:', activeBase, '| Source: Firestore Settings');
+
   const PER_ROW = 3; const PER_PAGE = 9;
   const items = await Promise.all(codes.map(async (qr, idx) => ({
     code: qr.code, type: qr.type,
     isDev: qr.type.toLowerCase() === 'developer',
     sheetNum: Math.floor(idx / PER_PAGE) + 1,
-    dataUrl: await makeQRDataUrl(qr.code),
+    dataUrl: await makeQRDataUrl(qr, activeBase),
   })));
   const pages: (typeof items)[] = [];
   for (let i = 0; i < items.length; i += PER_PAGE) pages.push(items.slice(i, i + PER_PAGE));

@@ -6,7 +6,7 @@ import {
   Download, X, CheckCircle2, AlertCircle, Loader2,
 } from 'lucide-react';
 import type { QRCodeRecord } from '../../types/qr/qrManagementTypes';
-import { exportCSV, exportExcel, exportBackupJSON, writeOpLog } from '../../services/qr/qrManagementService';
+import { exportCSV, exportExcel, exportBackupJSON, writeOpLog, syncGameUrlFromFirestore } from '../../services/qr/qrManagementService';
 
 const RED    = '#D71920';
 const SAFE   = '#16A34A';
@@ -513,12 +513,19 @@ async function exportAsPDF(
   try {
     const totalPages = Math.ceil(codes.length / PER_PAGE);
 
+    // Fetch the active game link from Firestore once — single source of truth
+    onProgress(2, 'Reading Settings…');
+    const activeBase = await syncGameUrlFromFirestore();
+    console.log('[SETTINGS] Current URL:', activeBase, '| Source: Firestore Settings');
+
     // Step 1: render all QR data-URLs
     onProgress(3, 'Rendering QR codes…');
     const dataUrls: string[] = [];
     for (let i = 0; i < codes.length; i++) {
       const c = codes[i];
-      const url = (c as any).url ?? `https://skm-egg-runner.vercel.app/?qr=${c.code}`;
+      // Use the url stored in Firestore at generation time; fall back to live Settings
+      const url = (c as any).url ?? `${activeBase}/?qr=${c.code}`;
+      console.log('[QR PAYLOAD] URL embedded:', url, '| Code:', c.code);
       try { dataUrls.push(await renderQR(url, 200, c.type)); }
       catch { dataUrls.push(''); }
       if (i % 10 === 9 || i === codes.length - 1) {
@@ -568,12 +575,17 @@ async function exportAsZIP(
     const folderName = safeFilename(batchName);
     const total = codes.length;
 
+    // Fetch the active game link from Firestore once before rendering
+    const activeBase = await syncGameUrlFromFirestore();
+    console.log('[SETTINGS] Current URL:', activeBase, '| Source: Firestore Settings');
+
     onProgress(5, 'Rendering QR images…');
 
     // Render QR PNGs in batches of 10 to keep browser responsive
     for (let i = 0; i < total; i++) {
       const c = codes[i];
-      const url = (c as any).url ?? `https://skm-egg-runner.vercel.app/?qr=${c.code}`;
+      // Use the url stored in Firestore at generation time; fall back to live Settings
+      const url = (c as any).url ?? `${activeBase}/?qr=${c.code}`;
       const dataUrl = await renderQR(url, 300, c.type);
 
       // Convert data-URL to Uint8Array
@@ -598,7 +610,7 @@ async function exportAsZIP(
       const status  = !c.active ? 'Disabled' : c.playCount >= c.maxPlays ? 'Exhausted' : c.playCount > 0 ? 'In Use' : 'Available';
       const maxStr  = c.maxPlays === 999999 ? 'Unlimited' : String(c.maxPlays);
       const remStr  = c.maxPlays === 999999 ? 'Unlimited' : String(Math.max(0, c.maxPlays - c.playCount));
-      const url     = (c as any).url ?? `https://skm-egg-runner.vercel.app/?qr=${c.code}`;
+      const url     = (c as any).url ?? `${activeBase}/?qr=${c.code}`;
       return [c.code, c.batch, c.type, maxStr, status, c.playCount, remStr, url]
         .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
     });
