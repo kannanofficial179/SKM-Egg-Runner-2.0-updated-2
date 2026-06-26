@@ -25,18 +25,34 @@ import type {
 } from '../../types/qr/qrManagementTypes';
 
 const COLLECTION = 'qrCodes';
-const BASE_URL   = 'https://skm-egg-runner.vercel.app';
+const DEFAULT_BASE_URL = 'https://skm-egg-runner.vercel.app';
+
+// ── Game URL config (localStorage, set via QRSettings) ───────────────────────
+const GAME_URL_KEY    = 'qr_game_url';
+const BATCH_COUNT_KEY = 'qr_batch_count';
+
+export function getGameUrl(): string {
+  try { return localStorage.getItem(GAME_URL_KEY) || DEFAULT_BASE_URL; } catch { return DEFAULT_BASE_URL; }
+}
+
+export function saveGameUrl(url: string): void {
+  try { localStorage.setItem(GAME_URL_KEY, url.replace(/\/$/, '')); } catch { /* ignore */ }
+}
+
+// ── Readable batch name: "Batch 1", "Batch 2", … ─────────────────────────────
+function nextBatchName(): { displayName: string; internalId: string } {
+  let count = 1;
+  try { count = parseInt(localStorage.getItem(BATCH_COUNT_KEY) ?? '0', 10) + 1; } catch { /* ignore */ }
+  try { localStorage.setItem(BATCH_COUNT_KEY, String(count)); } catch { /* ignore */ }
+  return { displayName: `Batch ${count}`, internalId: `BATCH-${Date.now()}` };
+}
 
 function buildCode(prefix: string, index: number): string {
   return `${prefix.toUpperCase()}-${String(index).padStart(6, '0')}`;
 }
 
 function buildURL(code: string): string {
-  return `${BASE_URL}/?qr=${code}`;
-}
-
-function getBatchId(): string {
-  return `BATCH-${Date.now()}`;
+  return `${getGameUrl()}/?qr=${code}`;
 }
 
 function todayStr(): string {
@@ -132,14 +148,18 @@ export function subscribeDashboardStats(onChange: (stats: QRDashboardStats) => v
 
 export interface GeneratedQR { code: string; url: string; }
 
+// Max Firestore writes per batch commit (hard limit is 500, using 490 for safety)
+const FIRESTORE_CHUNK = 490;
+
 export async function generateQRCodes(
   prefix: string,
   quantity: number,
   maxPlays: number,
   type: QRCodeType,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<GeneratedQR[]> {
-  const batch = writeBatch(db);
-  const batchId = getBatchId();
+  const { displayName, internalId } = nextBatchName();
+  const batchLabel = displayName; // e.g. "Batch 7"
   const codes: GeneratedQR[] = [];
 
   // Find highest existing index for this prefix to avoid duplicates
@@ -151,28 +171,41 @@ export async function generateQRCodes(
   // Golden QR codes get unlimited plays
   const effectiveMaxPlays = type === 'Golden' ? 999999 : maxPlays;
 
+  // Build all code/url pairs first (synchronous, instant)
   for (let i = 0; i < quantity; i++) {
     const code = buildCode(prefix, startIndex + i);
     const url  = buildURL(code);
     codes.push({ code, url });
-    const ref = doc(collection(db, COLLECTION), code);
-    batch.set(ref, {
-      code,
-      url,
-      prefix:    prefix.toUpperCase(),
-      batch:     batchId,
-      type,
-      maxPlays:  effectiveMaxPlays,
-      playCount: 0,
-      active:    true,
-      dailyScans: {},
-      createdAt:  serverTimestamp(),
-    });
   }
 
-  await batch.commit();
-  return codes;
+  // Commit in chunks of FIRESTORE_CHUNK to support up to 1000 QR codes.
+  // Each chunk yields to the event loop so the browser stays responsive.
+  for (let chunkStart = 0; chunkStart < codes.length; chunkStart += FIRESTORE_CHUNK) {
+    const chunk = codes.slice(chunkStart, chunkStart + FIRESTORE_CHUNK);
+    const fb = writeBatch(db);
+    for (const { code, url } of chunk) {
+      const ref = doc(collection(db, COLLECTION), code);
+      fb.set(ref, {
+        code,
+        url,
+        prefix:       prefix.toUpperCase(),
+        batch:        batchLabel,
+        batchId:      internalId,
+        type,
+        maxPlays:     effectiveMaxPlays,
+        playCount:    0,
+        active:       true,
+        dailyScans:   {},
+        createdAt:    serverTimestamp(),
+      });
+    }
+    await fb.commit();
+    onProgress?.(Math.min(chunkStart + FIRESTORE_CHUNK, codes.length), codes.length);
+    // Yield to the browser between chunks
+    await new Promise<void>(r => setTimeout(r, 0));
+  }
 
+  return codes;
 }
 
 // ── Fetch All QR Codes ────────────────────────────────────────────────────────

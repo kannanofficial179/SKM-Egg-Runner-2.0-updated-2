@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Save, Info } from 'lucide-react';
+import { Save, Info, Link2, CheckCircle2 } from 'lucide-react';
+import { getGameUrl, saveGameUrl } from '../../services/qr/qrManagementService';
 
 const RED = '#D71920';
 
@@ -33,8 +34,24 @@ export default function QRSettings() {
   const [pdfPerPage,      setPdfPerPage]      = useState(9);
   const [saved,           setSaved]           = useState(false);
 
+  // Game Link Mapping
+  const [gameUrl,     setGameUrl]     = useState(() => getGameUrl());
+  const [urlSaved,    setUrlSaved]    = useState(false);
+  const [urlError,    setUrlError]    = useState('');
+
+  const handleSaveGameUrl = () => {
+    setUrlError('');
+    let trimmed = gameUrl.trim();
+    if (!trimmed) { setUrlError('URL is required.'); return; }
+    try { new URL(trimmed); } catch { setUrlError('Please enter a valid URL (include https://).'); return; }
+    trimmed = trimmed.replace(/\/$/, '');
+    saveGameUrl(trimmed);
+    setGameUrl(trimmed);
+    setUrlSaved(true);
+    setTimeout(() => setUrlSaved(false), 2500);
+  };
+
   const handleSave = () => {
-    // Settings are applied locally — no Firestore write needed for generator defaults
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -49,6 +66,49 @@ export default function QRSettings() {
           Settings apply to default values in the QR Generator and PDF Print Center on this device. Firestore data is not affected.
         </p>
       </div>
+
+      {/* Game Link Mapping */}
+      <Card title="Game Link Mapping" description="Base URL embedded in every newly generated QR code">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#F9FAFB', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+            <Link2 size={14} color="#6B7280" style={{ flexShrink: 0 }} />
+            <p style={{ fontSize: 11, color: '#6B7280', margin: 0, lineHeight: 1.5 }}>
+              QR codes will encode: <strong style={{ color: '#1A1A1A', fontFamily: 'monospace', fontSize: 11 }}>{gameUrl}/?qr=SKM-000001</strong>
+            </p>
+          </div>
+          <div>
+            <label style={labelStyle}>Game URL</label>
+            <input
+              style={{ ...inputStyle, borderColor: urlError ? '#FCA5A5' : '#E5E7EB' }}
+              value={gameUrl}
+              onChange={e => { setGameUrl(e.target.value); setUrlError(''); }}
+              placeholder="https://skm-egg-runner.vercel.app"
+              onFocus={e => (e.target.style.borderColor = RED)}
+              onBlur={e  => (e.target.style.borderColor = urlError ? '#FCA5A5' : '#E5E7EB')}
+            />
+            {urlError && <p style={{ fontSize: 11, color: '#DC2626', margin: '4px 0 0', fontWeight: 600 }}>{urlError}</p>}
+            <p style={{ fontSize: 10, color: '#9CA3AF', margin: '4px 0 0' }}>Do not include a trailing slash. Changes apply to newly generated QR codes only.</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              onClick={handleSaveGameUrl}
+              style={{
+                background: `linear-gradient(135deg,${RED},#B51218)`, color: '#fff', border: 'none',
+                borderRadius: 10, padding: '10px 22px', fontSize: 12, fontWeight: 800,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
+                boxShadow: `0 4px 14px ${RED}25`,
+              }}
+            >
+              <Save size={13} strokeWidth={2} /> Save Mapping
+            </button>
+            {urlSaved && (
+              <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <CheckCircle2 size={14} strokeWidth={2} /> Game link updated successfully.
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
 
       {/* QR Generation Defaults */}
       <Card title="QR Generation Defaults" description="Default values pre-filled in the QR Generator form">
