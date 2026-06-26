@@ -62,13 +62,21 @@ function todayStr(): string {
 // ── Dashboard Stats ────────────────────────────────────────────────────────────
 
 export const EMPTY_STATS: QRDashboardStats = {
-  totalGenerated: 0, activeQR: 0, disabledQR: 0,
+  totalGenerated: 0, activeQR: 0, disabledQR: 0, exhaustedQR: 0,
   goldenQR: 0, developerQR: 0,
   scannedToday: 0, scannedThisWeek: 0, scannedThisMonth: 0,
   unusedQR: 0, lastSync: '',
 };
 
-/** Compute stats from a raw Firestore snapshot (used by both one-shot fetch and live listener) */
+/**
+ * Compute stats from a raw Firestore snapshot.
+ *
+ * STATUS DEFINITIONS — must exactly match searchQRCodes() filter logic:
+ *   activeQR   = active === true  AND playCount < maxPlays
+ *   disabledQR = active === false                           ← matches search status='disabled'
+ *   exhaustedQR= active === true  AND playCount >= maxPlays ← matches search status='exhausted'
+ *   unusedQR   = playCount === 0  (any active state)
+ */
 export function computeStatsFromSnap(snap: { forEach: (fn: (d: any) => void) => void; size: number }): QRDashboardStats {
   const today    = todayStr();
   const weekAgo  = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -76,11 +84,9 @@ export function computeStatsFromSnap(snap: { forEach: (fn: (d: any) => void) => 
   const weekStr  = weekAgo.toISOString().slice(0, 10);
   const monthStr = monthAgo.toISOString().slice(0, 10);
 
-  let totalGenerated = 0, activeQR = 0, disabledQR = 0;
+  let totalGenerated = 0, activeQR = 0, disabledQR = 0, exhaustedQR = 0;
   let goldenQR = 0, developerQR = 0, unusedQR = 0;
   let scannedToday = 0, scannedThisWeek = 0, scannedThisMonth = 0;
-
-  console.log('[QR Dashboard] Computing stats from', snap.size, 'documents');
 
   snap.forEach(d => {
     const data       = d.data();
@@ -91,24 +97,21 @@ export function computeStatsFromSnap(snap: { forEach: (fn: (d: any) => void) => 
 
     totalGenerated++;
 
-    // Active = active flag true AND not yet exhausted
-    if (!isActive || playCount >= maxPlays) {
-      disabledQR++;
+    // Three mutually-exclusive status buckets — aligned with searchQRCodes() filter
+    if (!isActive) {
+      disabledQR++;                          // active=false → Disabled
+    } else if (playCount >= maxPlays) {
+      exhaustedQR++;                         // active=true, plays used up → Exhausted
     } else {
-      activeQR++;
+      activeQR++;                            // active=true, plays remaining → Active
     }
 
     if (typeLower === 'golden')    goldenQR++;
     if (typeLower === 'developer') developerQR++;
     if (playCount === 0)           unusedQR++;
 
-    // dailyScans map: { "YYYY-MM-DD": count }
     const dailyMap: Record<string, number> = data.dailyScans ?? {};
-
-    // Today
     scannedToday += dailyMap[today] ?? 0;
-
-    // This week + this month — sum all matching date keys
     Object.entries(dailyMap).forEach(([dateKey, count]) => {
       if (dateKey >= weekStr)  scannedThisWeek  += count;
       if (dateKey >= monthStr) scannedThisMonth += count;
@@ -117,14 +120,24 @@ export function computeStatsFromSnap(snap: { forEach: (fn: (d: any) => void) => 
 
   const lastSync = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  console.log('[QR Dashboard] totalGenerated:', totalGenerated);
-  console.log('[QR Dashboard] activeQR:', activeQR, '| disabledQR:', disabledQR);
-  console.log('[QR Dashboard] goldenQR:', goldenQR, '| developerQR:', developerQR);
-  console.log('[QR Dashboard] unusedQR:', unusedQR);
-  console.log('[QR Dashboard] scannedToday:', scannedToday, '| thisWeek:', scannedThisWeek, '| thisMonth:', scannedThisMonth);
-  console.log('[QR Dashboard] lastSync:', lastSync);
+  // ── Self-check: verify buckets add up to total ────────────────────────────
+  const bucketSum = activeQR + disabledQR + exhaustedQR;
+  console.group('[QR Dashboard] Stats recalculated from Firestore');
+  console.log('Total documents:', totalGenerated);
+  console.log('Active (active=true, plays left):', activeQR);
+  console.log('Disabled (active=false):', disabledQR);
+  console.log('Exhausted (active=true, plays used):', exhaustedQR);
+  console.log('Unused (playCount=0):', unusedQR);
+  console.log('Golden:', goldenQR, '| Developer:', developerQR);
+  console.log('Scanned today:', scannedToday, '| week:', scannedThisWeek, '| month:', scannedThisMonth);
+  console.log('Bucket sum check:', bucketSum, '=== total:', totalGenerated, bucketSum === totalGenerated ? '✓' : '✗ MISMATCH');
+  if (bucketSum !== totalGenerated) {
+    console.warn('[QR Dashboard] Mismatch! Bucket sum', bucketSum, '!== Firestore total', totalGenerated,
+      '— possible orphaned or malformed documents');
+  }
+  console.groupEnd();
 
-  return { totalGenerated, activeQR, disabledQR, goldenQR, developerQR, unusedQR, scannedToday, scannedThisWeek, scannedThisMonth, lastSync };
+  return { totalGenerated, activeQR, disabledQR, exhaustedQR, goldenQR, developerQR, unusedQR, scannedToday, scannedThisWeek, scannedThisMonth, lastSync };
 }
 
 export async function fetchDashboardStats(): Promise<QRDashboardStats> {

@@ -17,14 +17,15 @@ export interface QRCodeRecord {
 
 export interface QRDashboardStats {
   totalGenerated:  number;
-  activeQR:        number;
-  disabledQR:      number;
+  activeQR:        number;   // active=true AND playCount < maxPlays
+  disabledQR:      number;   // active=false  (matches search status='disabled')
+  exhaustedQR:     number;   // active=true AND playCount >= maxPlays
   goldenQR:        number;
   developerQR:     number;
   scannedToday:    number;
   scannedThisWeek: number;
   scannedThisMonth:number;
-  unusedQR:        number;
+  unusedQR:        number;   // playCount === 0
   lastSync:        string;
 }
 

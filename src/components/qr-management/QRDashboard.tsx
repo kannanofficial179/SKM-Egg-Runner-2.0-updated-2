@@ -62,7 +62,8 @@ export default function QRDashboard({ stats, loading, error }: Props) {
   const primaryCards = [
     { label: 'Total Generated',  value: stats.totalGenerated,  icon: <QrCode       size={18} strokeWidth={2} />, accent: '#6366f1' },
     { label: 'Active QR',        value: stats.activeQR,        icon: <CheckCircle2 size={18} strokeWidth={2} />, accent: '#16A34A' },
-    { label: 'Disabled QR',      value: stats.disabledQR,      icon: <Ban          size={18} strokeWidth={2} />, accent: '#DC2626' },
+    { label: 'Disabled QR',      value: stats.disabledQR,      icon: <Ban          size={18} strokeWidth={2} />, accent: '#DC2626',  sub: 'active=false' },
+    { label: 'Exhausted QR',     value: stats.exhaustedQR ?? 0,icon: <AlertTriangle size={18} strokeWidth={2} />, accent: '#D97706', sub: 'all plays used' },
     { label: 'Unused QR',        value: stats.unusedQR,        icon: <PackageOpen  size={18} strokeWidth={2} />, accent: '#6B7280' },
     { label: 'Golden QR',        value: stats.goldenQR,        icon: <ShieldCheck  size={18} strokeWidth={2} />, accent: '#D97706' },
     { label: 'Developer QR',     value: stats.developerQR,     icon: <Code2        size={18} strokeWidth={2} />, accent: '#4F46E5' },
