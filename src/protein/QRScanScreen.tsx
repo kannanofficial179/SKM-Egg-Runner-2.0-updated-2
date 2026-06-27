@@ -23,7 +23,7 @@ import {
 import { CameraIcon, EggIcon, CheckCircleIcon, AlertIcon } from './Icons';
 import { playChickSuccess, resumeAudioContext } from '../services/audio/chickSound';
 
-type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'duplicate' | 'error';
+type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'duplicate' | 'consumed_other' | 'error';
 
 interface QRScanScreenProps {
   user: User;
@@ -227,23 +227,26 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
 
       console.log('[QR VALIDATED] accepted:', validation.eggCode);
 
-      // ── Atomic dedup claim — single transaction: read + write ─────────────
-      // claimProteinScan replaces the old two-step getDoc → addDoc pattern.
-      // The transaction guarantees that only one scan per user per QR ever
-      // commits, even if two requests arrive simultaneously.
-      let claimResult: 'new' | 'duplicate';
+      // ── Atomic global ownership claim ─────────────────────────────────────
+      // One QR = one protein claim globally. The transaction on qrCodes/{code}
+      // checks proteinConsumed and sets it atomically — only the first caller wins.
+      let claimResult: 'new' | 'consumed_by_self' | 'consumed_by_other';
       try {
         claimResult = await claimProteinScan(user.uid, validation.eggCode);
       } catch (claimErr: any) {
-        console.warn('[DEDUP] claimProteinScan threw:', claimErr?.message);
-        // On permission error, fall through to logEggScan which will also
-        // fail atomically if the dedup doc already exists.
-        claimResult = 'new';
+        console.warn('[PROTEIN CLAIM] claimProteinScan threw:', claimErr?.message);
+        claimResult = 'consumed_by_other';
       }
 
-      if (claimResult === 'duplicate') {
-        console.warn('[DEDUP] Protein already claimed for', validation.eggCode, 'by user', user.uid);
+      if (claimResult === 'consumed_by_self') {
+        console.warn('[PROTEIN CLAIM] Already claimed by this user:', validation.eggCode);
         if (mountedRef.current) setPhase('duplicate');
+        return;
+      }
+
+      if (claimResult === 'consumed_by_other') {
+        console.warn('[PROTEIN CLAIM] Already claimed by another user:', validation.eggCode);
+        if (mountedRef.current) setPhase('consumed_other');
         return;
       }
 
@@ -275,11 +278,10 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       console.error('[SCAN] handleScan error:', msg);
       if (!mountedRef.current) return;
 
-      // A permission error on proteinScans write means the dedup doc already
-      // exists (rule blocks create if it conflicts). Show "already consumed".
-      if (msg.includes('proteinScans') ||
-          (msg.includes('permission') && msg.includes('PERMISSION_DENIED'))) {
-        setPhase('duplicate');
+      // A permission-denied on the qrCodes update means proteinConsumed is already
+      // true and the rule blocked the write. Treat as consumed by another user.
+      if (msg.includes('permission') && msg.includes('PERMISSION_DENIED')) {
+        setPhase('consumed_other');
         return;
       }
 
@@ -614,9 +616,9 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               }}>
                 <CheckCircleIcon size={38} color="#fff" />
               </div>
-              <h3 style={{ fontSize: 21, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px' }}>Egg Logged!</h3>
+              <h3 style={{ fontSize: 21, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px' }}>+{result.protein}g Protein Added!</h3>
               <p style={{ fontSize: 12, color: '#666', margin: '0 0 18px' }}>
-                +{result.protein}g protein added successfully.
+                Egg recorded successfully.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 14 }}>
                 <RBox label="Protein Added" value={`+${result.protein}g`} color="#D71920" bg="#FCE8E8" />
@@ -665,12 +667,11 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
         </div>
       )}
 
-      {/* ── DUPLICATE ── */}
+      {/* ── DUPLICATE — same user scanned again ── */}
       {phase === 'duplicate' && (
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90 }}>
           <div style={{ padding: 14 }}>
             <div style={{ background: '#fff', borderRadius: 22, padding: 26, boxShadow: '0 4px 20px rgba(0,0,0,0.08)', textAlign: 'center' }}>
-              {/* Broken egg icon */}
               <div style={{
                 width: 80, height: 80, borderRadius: '50%', margin: '0 auto 16px',
                 background: 'linear-gradient(135deg,#FEF3C7,#FDE68A)',
@@ -682,11 +683,8 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
                 🍳
               </div>
               <h3 style={{ fontSize: 20, fontWeight: 900, color: '#1A1A1A', margin: '0 0 6px' }}>
-                Egg Already Consumed
+                This egg has already been consumed.
               </h3>
-              <p style={{ fontSize: 13, color: '#666', margin: '0 0 6px', lineHeight: 1.6 }}>
-                Protein was already added for this egg.
-              </p>
               <div style={{
                 background: '#FFFBEB', border: '1px solid #FDE68A',
                 borderRadius: 14, padding: '12px 16px', marginBottom: 20,
@@ -694,10 +692,53 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
               }}>
                 <span style={{ fontSize: 20, flexShrink: 0 }}>ℹ️</span>
                 <p style={{ fontSize: 12, color: '#92400E', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
-                  This egg has already been scanned and added to your protein tracker. Each egg can only be recorded once per account.
+                  You already recorded this egg. Each egg QR can only be added once.
                 </p>
               </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={scanAnother} style={{
+                  flex: 1, padding: '13px 0', borderRadius: 15, border: 'none', cursor: 'pointer',
+                  background: 'linear-gradient(135deg,#D71920,#B31217)', color: '#fff', fontWeight: 900, fontSize: 13,
+                  boxShadow: '0 4px 16px rgba(215,25,32,0.4)',
+                }}>Scan Another</button>
+                <button onClick={reset} style={{
+                  flex: 1, padding: '13px 0', borderRadius: 15, border: '1.5px solid #E8E8E8', cursor: 'pointer',
+                  background: '#F5F5F5', color: '#666', fontWeight: 700, fontSize: 13,
+                }}>Done</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* ── CONSUMED_OTHER — already claimed by a different user ── */}
+      {phase === 'consumed_other' && (
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90 }}>
+          <div style={{ padding: 14 }}>
+            <div style={{ background: '#fff', borderRadius: 22, padding: 26, boxShadow: '0 4px 20px rgba(0,0,0,0.08)', textAlign: 'center' }}>
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%', margin: '0 auto 16px',
+                background: 'linear-gradient(135deg,#FEE2E2,#FECACA)',
+                border: '2px solid #F87171',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)',
+                fontSize: 38,
+              }}>
+                🚫
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 900, color: '#1A1A1A', margin: '0 0 6px' }}>
+                This egg has already been consumed by another account.
+              </h3>
+              <div style={{
+                background: '#FEF2F2', border: '1px solid #FECACA',
+                borderRadius: 14, padding: '12px 16px', marginBottom: 20,
+                display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+              }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>🔒</span>
+                <p style={{ fontSize: 12, color: '#991B1B', margin: 0, lineHeight: 1.5, fontWeight: 600 }}>
+                  Each egg QR can only be recorded once. This QR code cannot be used again.
+                </p>
+              </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={scanAnother} style={{
                   flex: 1, padding: '13px 0', borderRadius: 15, border: 'none', cursor: 'pointer',

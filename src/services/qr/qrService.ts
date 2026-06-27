@@ -24,7 +24,7 @@
  *     of truth for play allowance.
  */
 
-import { doc, getDoc, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 
 const COLLECTION = 'qrCodes';
@@ -311,45 +311,52 @@ export async function consumeOnePlay(rawCode: string): Promise<QRValidationResul
 }
 
 /**
- * Protein-scan specific: atomic dedup check + write in a single transaction.
- * Returns: 'new' | 'duplicate'
- * Throws on Firestore error so the caller can handle it.
+ * Protein-scan global ownership: one QR = one protein claim, ever, across all users.
+ *
+ * Atomically reads the qrCodes/{qrCode} document and checks proteinConsumed.
+ * - If not yet consumed: sets proteinConsumed=true, records who claimed it, returns 'new'.
+ * - If consumed by this same uid: returns 'consumed_by_self'.
+ * - If consumed by a different uid: returns 'consumed_by_other'.
+ *
+ * The transaction guarantees that even if two users scan simultaneously,
+ * only one transaction commits. Throws on Firestore error.
  */
 export async function claimProteinScan(
   uid: string,
   qrCode: string,
-): Promise<'new' | 'duplicate'> {
-  const safeCode = qrCode.replace(/\//g, '_');
-  const dedupId  = `${uid}_${safeCode}`;
-  const dedupRef = doc(db, 'proteinScans', dedupId);
+): Promise<'new' | 'consumed_by_self' | 'consumed_by_other'> {
+  const qrRef = doc(db, COLLECTION, qrCode);
 
   const lockKey = `protein:${uid}:${qrCode}`;
   if (!acquireLock(lockKey)) {
-    console.warn('[PROTEIN DEDUP] Cooldown active — duplicate scan blocked');
-    return 'duplicate';
+    console.warn('[PROTEIN CLAIM] Cooldown active — duplicate scan blocked');
+    return 'consumed_by_self';
   }
 
   try {
-    const outcome = { value: 'new' as 'new' | 'duplicate' };
+    const outcome = { value: 'new' as 'new' | 'consumed_by_self' | 'consumed_by_other' };
 
     await runTransaction(db, async (tx) => {
-      const snap = await tx.get(dedupRef);
-      if (snap.exists()) {
-        outcome.value = 'duplicate';
+      const snap = await tx.get(qrRef);
+
+      if (snap.exists() && snap.data().proteinConsumed === true) {
+        const claimedBy: string = snap.data().proteinConsumedByUID ?? '';
+        outcome.value = claimedBy === uid ? 'consumed_by_self' : 'consumed_by_other';
         return;
       }
-      tx.set(dedupRef, {
-        userId:       uid,
-        qrId:         qrCode,
-        proteinAdded: 6,
-        timestamp:    new Date(),
+
+      // Not yet consumed — claim it atomically.
+      tx.update(qrRef, {
+        proteinConsumed:       true,
+        proteinConsumedAt:     serverTimestamp(),
+        proteinConsumedByUID:  uid,
       });
     });
 
-    if (outcome.value === 'duplicate') {
-      console.warn('[PROTEIN DEDUP] Already claimed:', dedupId);
+    if (outcome.value === 'new') {
+      console.log('[PROTEIN CLAIM] Claimed:', qrCode, 'by', uid);
     } else {
-      console.log('[PROTEIN DEDUP] New claim recorded:', dedupId);
+      console.warn('[PROTEIN CLAIM]', outcome.value, '— qrCode:', qrCode);
     }
     return outcome.value;
 

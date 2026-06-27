@@ -99,6 +99,15 @@ service cloud.firestore {
                     && request.resource.data.maxPlays  == resource.data.maxPlays;
       // Developer: full update access (bulk disable / enable / admin ops)
       allow update: if isDeveloper();
+      // Protein tracker: atomically mark an egg as globally consumed.
+      // Only allowed when proteinConsumed is not already true, and only the
+      // three protein fields may change — all game fields remain untouched.
+      allow update: if isAuth()
+                    && resource.data.get('proteinConsumed', false) == false
+                    && request.resource.data.proteinConsumed == true
+                    && request.resource.data.proteinConsumedByUID == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['proteinConsumed','proteinConsumedAt','proteinConsumedByUID']);
       allow create: if isAuth();
       // Only developers can delete QR codes
       allow delete: if isDeveloper();
