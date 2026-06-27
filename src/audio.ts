@@ -27,6 +27,10 @@ class SoundManager {
   private activeTheme: 'FARM' | 'FACTORY' | 'CHAMPION' = 'FARM';
   private currentBgmTitle: string = 'None';
 
+  // Hard mute lock — set while admin/QR Management route is active.
+  // Any call to startMusic() or startBgmSequencer() is a no-op while locked.
+  private adminMuteLocked: boolean = false;
+
   // Local volume adjustments
   private masterVol: number = 0.55;
   private sfxVol: number = 0.70;
@@ -165,6 +169,10 @@ class SoundManager {
 
   // Sequencer Engine: Loops a 16-step simple drum and synthesizer track
   private startBgmSequencer() {
+    if (this.adminMuteLocked) {
+      console.log('[AUDIO] BGM restart blocked — admin mute lock is active.');
+      return;
+    }
     this.ensureContext();
     if (this.isSeqRunning || !this.ctx) return;
     this.isSeqRunning = true;
@@ -704,6 +712,18 @@ class SoundManager {
 
   public playCityAmbience() {
     // Noop / Procedural wind handles ambient loop
+  }
+
+  // --- Admin mute lock — call when entering any admin/QR Management route ---
+  public lockAdminMute() {
+    this.adminMuteLocked = true;
+    this.stopBgmSequencer();
+    console.log('[AUDIO] Entered /codes — All audio stopped. Automatic restart blocked.');
+  }
+
+  public unlockAdminMute() {
+    this.adminMuteLocked = false;
+    console.log('[AUDIO] Exited /codes — Audio restored. BGM may resume when game starts.');
   }
 
   // --- Music Operations Hooks ---

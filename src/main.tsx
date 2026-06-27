@@ -112,17 +112,21 @@ function AppRoot() {
   }, [user?.uid]);
 
   // BGM ownership: the game engine is the SOLE owner of startMusic().
-  // Every non-GAME screen must be silent. Stop the sequencer immediately
-  // on any transition away from the game so QR Management, Module Select,
-  // Protein Tracker, and the login screen are all quiet.
-  // The engine's start() call re-starts BGM when a run begins.
+  // Every non-GAME screen must be silent. QR_MANAGEMENT uses a hard mute lock
+  // (lockAdminMute) so that no background effect can restart BGM while on /codes.
+  // Other non-GAME screens use a plain stopMusic(). engine.start() re-starts BGM.
   useEffect(() => {
-    if (screen !== 'GAME') {
+    if (screen === 'QR_MANAGEMENT') {
+      // Lock is also set by QRManagementPage mount — this fires first on transition.
+      soundManager.lockAdminMute();
+    } else if (screen !== 'GAME') {
+      // Ensure lock is cleared when navigating away from QR Management to any
+      // non-game screen (e.g. MODULE_SELECT) so normal flow isn't blocked.
+      soundManager.unlockAdminMute();
       soundManager.stopMusic();
-      if (screen === 'QR_MANAGEMENT') {
-        console.log('[AUDIO] Entered Admin Route: /codes — Game BGM stopped.');
-      }
     } else {
+      // Navigating to GAME — ensure lock is cleared so engine.start() can work.
+      soundManager.unlockAdminMute();
       console.log('[AUDIO] Returned to Game — Game BGM resumed.');
     }
     // No startMusic() here — engine.start() handles that exclusively.

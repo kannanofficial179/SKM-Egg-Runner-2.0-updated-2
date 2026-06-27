@@ -25,6 +25,8 @@ async function makeQRDataUrl(qr: QRCodeRecord, base: string): Promise<string> {
 }
 
 async function printQRCodes(codes: QRCodeRecord[], actor: string): Promise<void> {
+  console.log('[PRINT] Preparing printable document —', codes.length, 'QR codes');
+
   // Fetch active game link from Firestore once before rendering any QR images
   const activeBase = await syncGameUrlFromFirestore();
   console.log('[SETTINGS] Current URL:', activeBase, '| Source: Firestore Settings');
@@ -39,7 +41,7 @@ async function printQRCodes(codes: QRCodeRecord[], actor: string): Promise<void>
   const pages: (typeof items)[] = [];
   for (let i = 0; i < items.length; i += PER_PAGE) pages.push(items.slice(i, i + PER_PAGE));
 
-  const rows = (page: typeof items, pi: number) => {
+  const rows = (page: typeof items) => {
     const rowHtml: string[] = [];
     for (let r = 0; r < page.length; r += PER_ROW) {
       const cells = page.slice(r, r + PER_ROW);
@@ -47,6 +49,8 @@ async function printQRCodes(codes: QRCodeRecord[], actor: string): Promise<void>
         <td style="padding:14px 10px;text-align:center;vertical-align:top;width:33.33%">
           <div style="display:inline-block;border:1.5px solid #eee;border-radius:12px;padding:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
             <img src="${item.dataUrl}" width="160" height="160" style="display:block;margin:0 auto;border-radius:6px"/>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#1A1A1A;letter-spacing:0.5px">${item.code}</div>
+            <div style="font-size:9px;color:#9CA3AF;margin-top:2px;text-transform:capitalize">${item.type}</div>
           </div>
         </td>`).join('')}</tr>`);
     }
@@ -54,16 +58,79 @@ async function printQRCodes(codes: QRCodeRecord[], actor: string): Promise<void>
   };
 
   const date = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>SKM QR Codes</title>
-    <style>@page{size:A4 portrait;margin:14mm}body{font-family:system-ui,sans-serif;margin:0}.page{page-break-after:always}.page:last-child{page-break-after:avoid}.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #D71920;padding-bottom:8px;margin-bottom:16px}.header-title{font-size:16px;font-weight:900;color:#D71920}.header-meta{font-size:9px;color:#888;text-align:right}table{width:100%;border-collapse:collapse}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
-    </head><body>
-    ${pages.map((page, pi) => `<div class="page"><div class="header"><div class="header-title">SKM QR Code Sheet</div><div class="header-meta">Page ${pi + 1} / ${pages.length}<br/>${date}<br/>Admin: ${actor}</div></div><table>${rows(page, pi)}</table></div>`).join('')}
-    </body></html>`;
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>SKM QR Codes — ${date}</title>
+  <style>
+    @page { size: A4 portrait; margin: 14mm; }
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: avoid; }
+    .header { display: flex; justify-content: space-between; align-items: center;
+               border-bottom: 2px solid #D71920; padding-bottom: 8px; margin-bottom: 16px; }
+    .header-company { font-size: 18px; font-weight: 900; color: #D71920; }
+    .header-batch   { font-size: 11px; font-weight: 700; color: #1A1A1A; margin-top: 2px; }
+    .header-meta    { font-size: 9px; color: #888; text-align: right; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; }
+    .footer { margin-top: 12px; text-align: center; font-size: 9px; color: #9CA3AF; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  ${pages.map((page, pi) => `
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="header-company">SKM EGG PRODUCTS</div>
+        <div class="header-batch">QR Code Sheet — Batch ${pi + 1}</div>
+      </div>
+      <div class="header-meta">
+        Page ${pi + 1} / ${pages.length}<br/>
+        Generated: ${date}<br/>
+        Admin: ${actor}<br/>
+        Total codes: ${codes.length}
+      </div>
+    </div>
+    <table>${rows(page)}</table>
+    <div class="footer">SKM Egg Runner 2.0 · QR Management · Page ${pi + 1} of ${pages.length}</div>
+  </div>`).join('')}
+</body>
+</html>`;
 
-  const win = window.open('', '_blank', 'width=900,height=700');
-  if (!win) { alert('Allow pop-ups for this site to print QR codes.'); return; }
-  win.document.write(html); win.document.close(); win.focus();
-  setTimeout(() => win.print(), 800);
+  console.log('[PRINT] Printable HTML generated —', pages.length, 'page(s)');
+
+  const win = window.open('', '_blank', 'width=960,height=800');
+  if (!win) {
+    alert('Pop-ups are blocked. Please allow pop-ups for this site to print QR codes.');
+    return;
+  }
+
+  // Write and close triggers a load event on the new window.
+  // Wait for onload before calling print() so all inline data-URLs are rendered.
+  await new Promise<void>((resolve) => {
+    win.onload = () => {
+      console.log('[PRINT] Window loaded — opening print dialog');
+      win.focus();
+      win.print();
+      resolve();
+    };
+    win.document.write(html);
+    win.document.close();
+    // Fallback: some browsers fire onload before document.write; guard with timeout.
+    setTimeout(() => {
+      if (!win.closed) {
+        console.log('[PRINT] Print dialog opened (fallback timeout)');
+        win.focus();
+        win.print();
+      }
+      resolve();
+    }, 1500);
+  });
+
   await writeOpLog('print', 'mixed', codes.length, actor);
 }
 

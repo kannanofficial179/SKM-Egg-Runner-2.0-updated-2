@@ -175,12 +175,16 @@ export default function QRManagementPage({ onBack }: Props) {
     if (!isMobile) setMobileOpen(false);
   }, [isMobile]);
 
-  // Safety: ensure all game audio is silenced whenever this admin panel is mounted.
-  // main.tsx already stops BGM on screen transition; this is belt-and-suspenders
-  // in case of any async race between mount and the screen-change effect.
+  // Hard mute lock for the entire QR Management session.
+  // lockAdminMute() stops the sequencer AND blocks any future startMusic() call
+  // so no background effect (settings sync, engine resume) can restart BGM
+  // while the admin panel is mounted. unlockAdminMute() on unmount restores
+  // normal BGM behaviour when the user returns to the game.
   useEffect(() => {
-    soundManager.stopMusic();
-    console.log('[AUDIO] Entered Admin Route: /codes — Game BGM stopped.');
+    soundManager.lockAdminMute();
+    return () => {
+      soundManager.unlockAdminMute();
+    };
   }, []);
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);

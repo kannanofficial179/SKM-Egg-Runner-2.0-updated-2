@@ -336,31 +336,34 @@ export async function claimProteinScan(
   try {
     const outcome = { value: 'new' as 'new' | 'consumed_by_self' | 'consumed_by_other' };
 
+    console.log('[PROTEIN] Transaction started — qrCode:', qrCode, '| uid:', uid);
+
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(qrRef);
 
       if (snap.exists() && snap.data().proteinConsumed === true) {
         const claimedBy: string = snap.data().proteinConsumedByUID ?? '';
         outcome.value = claimedBy === uid ? 'consumed_by_self' : 'consumed_by_other';
+        console.warn('[PROTEIN] Rejected — already consumed by', claimedBy === uid ? 'this user' : 'another user (' + claimedBy + ')');
         return;
       }
 
-      // Not yet consumed — claim it atomically.
-      tx.update(qrRef, {
-        proteinConsumed:       true,
-        proteinConsumedAt:     serverTimestamp(),
-        proteinConsumedByUID:  uid,
-      });
+      // Not yet consumed — claim it atomically. Use merge:true so the write
+      // succeeds whether or not the protein fields already exist on the doc.
+      tx.set(qrRef, {
+        proteinConsumed:      true,
+        proteinConsumedAt:    serverTimestamp(),
+        proteinConsumedByUID: uid,
+      }, { merge: true });
     });
 
     if (outcome.value === 'new') {
-      console.log('[PROTEIN CLAIM] Claimed:', qrCode, 'by', uid);
-    } else {
-      console.warn('[PROTEIN CLAIM]', outcome.value, '— qrCode:', qrCode);
+      console.log('[PROTEIN] Transaction committed — qrCode:', qrCode, 'claimed by', uid);
     }
     return outcome.value;
 
   } catch (err: any) {
+    console.error('[PROTEIN] Transaction error:', err?.message);
     releaseLock(lockKey);
     throw err;
   }
