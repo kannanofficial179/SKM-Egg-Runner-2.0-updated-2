@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { soundManager } from '../../audio';
 import {
   QrCode, RefreshCw, ArrowLeft,
   LayoutDashboard, Plus, Search, Zap, Layers3,
@@ -173,6 +174,14 @@ export default function QRManagementPage({ onBack }: Props) {
   useEffect(() => {
     if (!isMobile) setMobileOpen(false);
   }, [isMobile]);
+
+  // Safety: ensure all game audio is silenced whenever this admin panel is mounted.
+  // main.tsx already stops BGM on screen transition; this is belt-and-suspenders
+  // in case of any async race between mount and the screen-change effect.
+  useEffect(() => {
+    soundManager.stopMusic();
+    console.log('[AUDIO] Entered Admin Route: /codes — Game BGM stopped.');
+  }, []);
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
 

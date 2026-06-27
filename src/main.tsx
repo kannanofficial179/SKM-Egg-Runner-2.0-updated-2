@@ -119,7 +119,11 @@ function AppRoot() {
   useEffect(() => {
     if (screen !== 'GAME') {
       soundManager.stopMusic();
-      console.log(`[AUDIO] Screen: ${screen} — Game BGM stopped.`);
+      if (screen === 'QR_MANAGEMENT') {
+        console.log('[AUDIO] Entered Admin Route: /codes — Game BGM stopped.');
+      }
+    } else {
+      console.log('[AUDIO] Returned to Game — Game BGM resumed.');
     }
     // No startMusic() here — engine.start() handles that exclusively.
   }, [screen]);
