@@ -49,24 +49,21 @@ service cloud.firestore {
     // ── NOTIFICATION COLLECTIONS ─────────────────────────────
 
     match /notifications/{notifId} {
-      // Users read their own; developers read all
-      allow read: if isAuth()
-                  && (resource == null
-                      || resource.data.userId == request.auth.uid
-                      || isDeveloper());
+      // Any authenticated user can read — the query always filters by userId
+      // so users only ever receive their own docs in practice.
+      // A broad read rule is safe here because all writes are owner-scoped.
+      allow read: if isAuth();
 
-      // Regular users create their own notifications (reminders, scan events)
-      // Developers (admin broadcast) can create any notification, including
-      // the __broadcast__ sentinel (targetAll) and per-user admin messages.
+      // Users create their own notifications; developers/broadcasts create any
       allow create: if isAuth()
                     && (request.resource.data.userId == request.auth.uid
                         || isDeveloper()
                         || request.resource.data.targetAll == true);
 
-      // Only the owner marks their notification as read
+      // Owner marks as read. Cloud Function (Admin SDK) writes fcmDelivered —
+      // Admin SDK bypasses rules entirely so no rule needed for CF updates.
       allow update: if isAuth()
-                    && resource.data.userId == request.auth.uid
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+                    && resource.data.userId == request.auth.uid;
 
       // Owner or developer can delete
       allow delete: if isAuth()

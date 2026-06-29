@@ -110,56 +110,71 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
+    // aborted = true when this effect cleans up (uid changed or component unmounts)
+    // Prevents stale setState calls after async work on an old uid.
+    let aborted = false;
+
     const email       = (user as any)?.email as string | undefined;
     const currentPerm = getPushPermissionState();
-    setPushPermission(currentPerm);
+    if (!aborted) setPushPermission(currentPerm);
 
-    console.info('[FCM] User logged in. uid:', uid, '| notification permission:', currentPerm);
+    console.info('[FCM] ─────────────────────────────────────────────────');
+    console.info('[FCM] User logged in. uid:', uid);
+    console.info('[FCM] Current notification permission:', currentPerm);
+    console.info('[FCM] VAPID key present:', !!import.meta.env.VITE_FIREBASE_VAPID_KEY);
+    console.info('[FCM] ─────────────────────────────────────────────────');
 
     const run = async () => {
-      let permToUse = currentPerm;
+      let perm = currentPerm;
 
-      // If permission is already granted → go straight to token init
-      if (permToUse === 'granted') {
-        console.info('[FCM] Permission already granted — initializing FCM token...');
+      // ── Permission already granted ────────────────────────────────────────
+      if (perm === 'granted') {
+        console.info('[FCM] STEP 1 — Permission already GRANTED ✓ — proceeding to token...');
+        if (aborted) return;
         const token = await initFCMToken(uid);
+        if (aborted) return;
         setPushEnabled(!!token);
-        if (token) {
-          await sendLoginNotification(uid, email);
-        }
+        if (token) await sendLoginNotification(uid, email);
         return;
       }
 
-      // If permission is default → request it (always, not just first time)
-      if (permToUse === 'default') {
-        console.info('[FCM] Permission is default — will request in 2s...');
-        await new Promise(r => setTimeout(r, 2000));
-        permToUse = await requestPushPermission();
-        setPushPermission(permToUse);
+      // ── Permission not yet asked — request it ─────────────────────────────
+      if (perm === 'default') {
+        // Small delay so the page is visually settled before the browser prompt
+        await new Promise(r => setTimeout(r, 1000));
+        if (aborted) return;
 
-        if (permToUse === 'granted') {
+        perm = await requestPushPermission();
+        if (aborted) return;
+        setPushPermission(perm);
+
+        if (perm === 'granted') {
           const token = await initFCMToken(uid);
+          if (aborted) return;
           setPushEnabled(!!token);
-          if (token) {
-            await sendLoginNotification(uid, email);
-          }
+          if (token) await sendLoginNotification(uid, email);
         }
         return;
       }
 
-      // Denied or unsupported
-      console.warn('[FCM] Push notifications not available. Permission:', permToUse);
-      if (permToUse === 'denied') {
-        console.warn('[FCM] User blocked notifications. To re-enable:');
-        console.warn('[FCM]   Chrome: address bar lock icon → Notifications → Allow');
-        console.warn('[FCM]   Android: Settings → Apps → Chrome → Notifications → Allow');
+      // ── Denied or unsupported ─────────────────────────────────────────────
+      console.warn('[FCM] Push notifications blocked or unsupported. Permission:', perm);
+      if (perm === 'denied') {
+        console.warn('[FCM] To re-enable on Chrome Android:');
+        console.warn('[FCM]   Settings → Site Settings → Notifications → find this site → Allow');
+      }
+      if (perm === 'unsupported') {
+        console.warn('[FCM] This browser/device does not support Web Push notifications.');
       }
     };
 
     run().catch(err => {
-      console.error('[FCM] FCM setup error (non-fatal):', err?.message ?? err);
+      if (aborted) return;
+      console.error('[FCM] FCM setup pipeline error:', err?.message ?? err);
       setPushEnabled(false);
     });
+
+    return () => { aborted = true; };
   }, [uid]);
 
   // ── FCM foreground handler — NO popup, just log silently ────────────────────
