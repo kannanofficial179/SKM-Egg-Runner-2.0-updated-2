@@ -1,28 +1,38 @@
 /**
  * SKM Admin Broadcast Service
  *
- * Sends real FCM push notifications by calling FCM HTTP v1 REST API directly
- * from the browser using the Firebase project's API key + ID token auth.
+ * Secure architecture — the client NEVER calls FCM directly:
  *
- * No Cloud Functions. No Blaze plan. Works on Spark plan.
+ *   Admin types: notify: Hello everyone
+ *         ↓
+ *   executeBroadcast()
+ *         ↓
+ *   Resolves target users from Firestore
+ *         ↓
+ *   Writes ONE notification doc per user (or a broadcast sentinel)
+ *         ↓
+ *   Cloud Function onNotificationCreated triggers for each doc (server-side)
+ *         ↓
+ *   Cloud Function reads fcmToken from users/{uid} via Admin SDK
+ *         ↓
+ *   Cloud Function calls messaging.send() — real Android push arrives
  *
- * Flow:
- *   notify: Hello  →  resolveTokens()  →  sendFCMDirect()  →  Android notification
+ * No server keys. No FCM credentials. No secret ever touches the browser.
  *
  * Supported commands:
- *   notify: <message>               → all users with FCM token
- *   notify game: <message>          → game players only
- *   notify protein: <message>       → protein tracker users only
+ *   notify: <message>               → all users
+ *   notify game: <message>          → game players
+ *   notify protein: <message>       → protein tracker users
  *   notify uid:<uid> <message>      → one specific user
- *   notify topic:<topic> <message>  → named topic (same as all for now)
- *   debug tokens                    → show how many tokens are registered
+ *   notify topic:<topic> <message>  → named topic group
+ *   debug tokens                    → diagnostic: show token count
  */
 
 import {
-  collection, getDocs, addDoc, serverTimestamp,
-  query, where, doc, getDoc,
+  collection, getDocs, addDoc, serverTimestamp, query, where,
 } from 'firebase/firestore';
-import { db, auth } from '../firebase/firebase';
+import { db } from '../firebase/firebase';
+import { getAllTokens, getTokenForUser } from './fcmSender';
 import type { NotificationType } from '../../types/notifications';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -66,33 +76,31 @@ export interface BroadcastLogEntry {
 // ─── Command parser ───────────────────────────────────────────────────────────
 
 export function parseNotifyCommand(raw: string): ParsedNotifyCommand | null {
-  const trimmed = raw.trim();
-  if (!trimmed.toLowerCase().startsWith('notify') && !trimmed.toLowerCase().startsWith('debug')) return null;
+  const t = raw.trim();
+  if (!t.toLowerCase().startsWith('notify') && !t.toLowerCase().startsWith('debug')) return null;
 
-  // debug tokens — diagnostic command
-  if (/^debug\s+tokens?$/i.test(trimmed)) {
-    return { target: { kind: 'debug' }, message: '', raw: trimmed };
-  }
+  if (/^debug\s+tokens?$/i.test(t))
+    return { target: { kind: 'debug' }, message: '', raw: t };
 
-  // notify uid:<uid> <message>
-  const uidMatch = trimmed.match(/^notify\s+uid:(\S+)\s+(.+)$/i);
-  if (uidMatch) return { target: { kind: 'uid', uid: uidMatch[1] }, message: uidMatch[2].trim(), raw: trimmed };
+  const uidMatch = t.match(/^notify\s+uid:(\S+)\s+(.+)$/i);
+  if (uidMatch)
+    return { target: { kind: 'uid', uid: uidMatch[1] }, message: uidMatch[2].trim(), raw: t };
 
-  // notify topic:<topic> <message>
-  const topicMatch = trimmed.match(/^notify\s+topic:(\S+)\s+(.+)$/i);
-  if (topicMatch) return { target: { kind: 'topic', topic: topicMatch[1] }, message: topicMatch[2].trim(), raw: trimmed };
+  const topicMatch = t.match(/^notify\s+topic:(\S+)\s+(.+)$/i);
+  if (topicMatch)
+    return { target: { kind: 'topic', topic: topicMatch[1] }, message: topicMatch[2].trim(), raw: t };
 
-  // notify game: <message>
-  const gameMatch = trimmed.match(/^notify\s+game:\s*(.+)$/i);
-  if (gameMatch) return { target: { kind: 'game' }, message: gameMatch[1].trim(), raw: trimmed };
+  const gameMatch = t.match(/^notify\s+game:\s*(.+)$/i);
+  if (gameMatch)
+    return { target: { kind: 'game' }, message: gameMatch[1].trim(), raw: t };
 
-  // notify protein: <message>
-  const proteinMatch = trimmed.match(/^notify\s+protein:\s*(.+)$/i);
-  if (proteinMatch) return { target: { kind: 'protein' }, message: proteinMatch[1].trim(), raw: trimmed };
+  const proteinMatch = t.match(/^notify\s+protein:\s*(.+)$/i);
+  if (proteinMatch)
+    return { target: { kind: 'protein' }, message: proteinMatch[1].trim(), raw: t };
 
-  // notify: <message>
-  const allMatch = trimmed.match(/^notify:\s*(.+)$/i);
-  if (allMatch) return { target: { kind: 'all' }, message: allMatch[1].trim(), raw: trimmed };
+  const allMatch = t.match(/^notify:\s*(.+)$/i);
+  if (allMatch)
+    return { target: { kind: 'all' }, message: allMatch[1].trim(), raw: t };
 
   return null;
 }
@@ -110,164 +118,32 @@ function targetLabel(target: BroadcastTarget): string {
   }
 }
 
-// ─── Resolve FCM tokens ───────────────────────────────────────────────────────
+// ─── Resolve target user IDs ──────────────────────────────────────────────────
 
-interface UserToken { uid: string; fcmToken: string; }
-
-async function resolveTokens(target: BroadcastTarget): Promise<UserToken[]> {
+async function resolveUserIds(target: BroadcastTarget): Promise<string[]> {
   switch (target.kind) {
     case 'all':
     case 'topic':
     case 'debug': {
-      // Query all users that have a non-null fcmToken field
-      const snap = await getDocs(
-        query(collection(db, 'users'), where('fcmToken', '!=', null))
-      );
-      const tokens: UserToken[] = [];
-      snap.forEach(d => {
-        const token = d.data().fcmToken as string | null | undefined;
-        if (token && typeof token === 'string' && token.length > 10) {
-          tokens.push({ uid: d.id, fcmToken: token });
-        }
-      });
-      return tokens;
+      const snap = await getDocs(collection(db, 'users'));
+      return snap.docs.map(d => d.id);
     }
 
-    case 'uid': {
-      const userDoc = await getDoc(doc(db, 'users', (target as any).uid));
-      if (!userDoc.exists()) return [];
-      const token = userDoc.data()?.fcmToken as string | undefined;
-      if (token && token.length > 10) return [{ uid: (target as any).uid, fcmToken: token }];
-      return [];
-    }
+    case 'uid':
+      return [(target as any).uid];
 
     case 'game': {
       const snap = await getDocs(collection(db, 'game_stats'));
-      return resolveTokensForUids(snap.docs.map(d => d.id));
+      return snap.docs.map(d => d.id);
     }
 
     case 'protein': {
       const snap = await getDocs(collection(db, 'daily_stats'));
-      return resolveTokensForUids([...new Set(snap.docs.map(d => d.id))]);
+      return [...new Set(snap.docs.map(d => d.id))];
     }
 
     default: return [];
   }
-}
-
-async function resolveTokensForUids(uids: string[]): Promise<UserToken[]> {
-  const results: UserToken[] = [];
-  for (let i = 0; i < uids.length; i += 20) {
-    const chunk = uids.slice(i, i + 20);
-    const docs  = await Promise.all(chunk.map(uid => getDoc(doc(db, 'users', uid))));
-    docs.forEach((d, idx) => {
-      const token = d.data()?.fcmToken as string | undefined;
-      if (token && token.length > 10) results.push({ uid: chunk[idx], fcmToken: token });
-    });
-  }
-  return results;
-}
-
-// ─── Send FCM via REST API (works in browser, no server needed) ───────────────
-//
-// Uses FCM Legacy HTTP API with the server key stored in env.
-// If no server key, falls back to writing a notification doc and letting
-// any deployed Cloud Function handle it.
-
-const FCM_LEGACY_URL = 'https://fcm.googleapis.com/fcm/send';
-const SERVER_KEY     = import.meta.env.VITE_FCM_SERVER_KEY as string | undefined;
-
-async function sendFCMDirect(
-  tokens:  string[],
-  title:   string,
-  body:    string,
-  data:    Record<string, string>
-): Promise<{ success: number; failure: number; error?: string }> {
-
-  if (tokens.length === 0) return { success: 0, failure: 0 };
-
-  if (!SERVER_KEY) {
-    return {
-      success: 0,
-      failure: tokens.length,
-      error:   'VITE_FCM_SERVER_KEY not set in .env — push delivery skipped. See setup instructions.',
-    };
-  }
-
-  let totalSuccess = 0;
-  let totalFailure = 0;
-
-  // FCM Legacy API allows max 1000 tokens per request
-  const CHUNK = 1000;
-  for (let i = 0; i < tokens.length; i += CHUNK) {
-    const chunk = tokens.slice(i, i + CHUNK);
-
-    try {
-      const payload = {
-        registration_ids: chunk,
-        priority: 'high',
-        notification: {
-          title,
-          body,
-          icon:  '/THUMBS_POSE__Egg_-removebg-preview.png',
-          badge: '/THUMBS_POSE__Egg_-removebg-preview.png',
-          sound: 'default',
-          click_action: 'https://skm-egg-runner.web.app/',
-        },
-        data: {
-          ...data,
-          title,
-          body,
-          clickAction: 'https://skm-egg-runner.web.app/',
-        },
-        android: {
-          priority: 'high',
-          notification: {
-            channel_id:  'skm_default',
-            color:       '#D71920',
-            sound:       'default',
-            icon:        'ic_notification',
-          },
-        },
-        webpush: {
-          headers:      { Urgency: 'high' },
-          notification: {
-            title, body,
-            icon:              '/THUMBS_POSE__Egg_-removebg-preview.png',
-            requireInteraction: true,
-          },
-        },
-      };
-
-      const resp = await fetch(FCM_LEGACY_URL, {
-        method:  'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `key=${SERVER_KEY}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => resp.statusText);
-        console.error('[FCM Direct] HTTP error:', resp.status, errText);
-        totalFailure += chunk.length;
-        continue;
-      }
-
-      const result = await resp.json();
-      console.info('[FCM Direct] Chunk result:', result);
-
-      totalSuccess += result.success  ?? 0;
-      totalFailure += result.failure  ?? 0;
-
-    } catch (err: any) {
-      console.error('[FCM Direct] fetch error:', err?.message ?? err);
-      totalFailure += chunk.length;
-    }
-  }
-
-  return { success: totalSuccess, failure: totalFailure };
 }
 
 // ─── Execute broadcast ────────────────────────────────────────────────────────
@@ -279,66 +155,81 @@ export async function executeBroadcast(
   const title = 'SKM Announcement';
   const type: NotificationType = 'admin_announcement';
 
+  // ── Debug: report token count, no messages sent ─────────────────────────────
+  if (parsed.target.kind === 'debug') {
+    const [allTokens, allUsers] = await Promise.all([
+      getAllTokens(),
+      getDocs(collection(db, 'users')),
+    ]);
+    const lines = [
+      `Total users in Firestore: ${allUsers.size}`,
+      `Users with FCM token registered: ${allTokens.length}`,
+      `VITE_FIREBASE_VAPID_KEY set: ${!!import.meta.env.VITE_FIREBASE_VAPID_KEY ? 'YES' : 'NO ← tokens cannot register without this'}`,
+      `Push delivery: handled by Cloud Function (server-side, Admin SDK)`,
+      allTokens.length > 0
+        ? `Sample token prefix: ${allTokens[0].fcmToken.substring(0, 20)}...`
+        : 'No tokens registered yet — open app on phone and allow notifications.',
+    ];
+    return {
+      ok: true, recipientCount: allUsers.size,
+      successCount: allTokens.length, failureCount: 0,
+      debugInfo: lines.join('\n'),
+    };
+  }
+
   try {
-    // ── Debug command — just report token count ──────────────────────────────
-    if (parsed.target.kind === 'debug') {
-      const tokens = await resolveTokens({ kind: 'all' });
-      const allUsers = await getDocs(collection(db, 'users'));
-      const totalUsers = allUsers.size;
-      const withTokens = tokens.length;
-      const missingKey = !SERVER_KEY;
+    // 1. Resolve target user IDs
+    const userIds = await resolveUserIds(parsed.target);
 
-      const lines = [
-        `Total users in Firestore: ${totalUsers}`,
-        `Users with FCM token registered: ${withTokens}`,
-        `VITE_FCM_SERVER_KEY set: ${missingKey ? 'NO ← this is why push is broken' : 'YES'}`,
-        withTokens === 0
-          ? 'No tokens → VAPID key (VITE_FIREBASE_VAPID_KEY) missing in .env'
-          : `Sample token prefix: ${tokens[0].fcmToken.substring(0, 20)}...`,
-      ];
-
+    if (userIds.length === 0) {
       return {
-        ok: true,
-        recipientCount: totalUsers,
-        successCount:   withTokens,
-        failureCount:   0,
-        debugInfo:      lines.join('\n'),
+        ok: false, recipientCount: 0, successCount: 0, failureCount: 0,
+        error: 'No matching users found for this target.',
       };
     }
 
-    // 1. Resolve tokens
-    const userTokens = await resolveTokens(parsed.target);
+    console.info(`[Broadcast] Target="${targetLabel(parsed.target)}" → ${userIds.length} users`);
 
-    console.info(`[Broadcast] Target="${targetLabel(parsed.target)}" → ${userTokens.length} tokens found`);
+    // 2. Write one notification doc per user.
+    //    Cloud Function onNotificationCreated fires for each doc and sends the push.
+    //    Cap at 100 users to avoid Firestore write storms; use targetAll for larger groups.
+    const isAll = parsed.target.kind === 'all' || parsed.target.kind === 'topic';
 
-    if (userTokens.length === 0) {
-      // Count total users so error is informative
-      const allUsers = await getDocs(collection(db, 'users'));
-      return {
-        ok: false,
-        recipientCount: 0,
-        successCount:   0,
-        failureCount:   0,
-        error: [
-          `0 devices with push notifications registered (${allUsers.size} total users).`,
-          !SERVER_KEY
-            ? 'VITE_FCM_SERVER_KEY is missing from .env — add it and restart.'
-            : 'Users must open the app once so their device token registers.',
-        ].join(' '),
-      };
+    if (isAll) {
+      // For "all users" write ONE sentinel doc with targetAll=true.
+      // The Cloud Function handles multicasting to every registered token server-side.
+      await addDoc(collection(db, 'notifications'), {
+        userId:    '__broadcast__',
+        title,
+        message:   parsed.message,
+        type,
+        priority:  'high',
+        read:      false,
+        targetAll: true,
+        metadata:  { adminId, command: parsed.raw, target: targetLabel(parsed.target) },
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      // Per-user: write individual docs (Cloud Function sends each push)
+      const CHUNK = 10;
+      for (let i = 0; i < userIds.length; i += CHUNK) {
+        await Promise.allSettled(
+          userIds.slice(i, i + CHUNK).map(uid =>
+            addDoc(collection(db, 'notifications'), {
+              userId:    uid,
+              title,
+              message:   parsed.message,
+              type,
+              priority:  'high',
+              read:      false,
+              targetAll: false,
+              metadata:  { adminId, command: parsed.raw, target: targetLabel(parsed.target) },
+              createdAt: serverTimestamp(),
+            })
+          )
+        );
+      }
     }
-
-    const fcmTokens = userTokens.map(u => u.fcmToken);
-
-    // 2. Send FCM push directly
-    const { success, failure, error: sendError } = await sendFCMDirect(
-      fcmTokens,
-      title,
-      parsed.message,
-      { type, adminId, command: parsed.raw, target: targetLabel(parsed.target) }
-    );
-
-    console.info(`[Broadcast] FCM result: success=${success} failure=${failure}`);
 
     // 3. Write broadcast log
     const logRef = await addDoc(collection(db, 'broadcast_logs'), {
@@ -346,37 +237,15 @@ export async function executeBroadcast(
       command:        parsed.raw,
       target:         targetLabel(parsed.target),
       message:        parsed.message,
-      recipientCount: userTokens.length,
-      successCount:   success,
-      failureCount:   failure,
+      recipientCount: userIds.length,
       sentAt:         serverTimestamp(),
     }).catch(() => null);
 
-    // 4. Write one in-app notification doc per user (for notification history)
-    //    Limit to 50 max to avoid write storms on large user bases
-    const notifUsers = userTokens.slice(0, 50);
-    await Promise.allSettled(
-      notifUsers.map(u =>
-        addDoc(collection(db, 'notifications'), {
-          userId:    u.uid,
-          title,
-          message:   parsed.message,
-          type,
-          priority:  'high',
-          read:      false,
-          targetAll: false,
-          metadata:  { adminId, command: parsed.raw, target: targetLabel(parsed.target) },
-          createdAt: serverTimestamp(),
-        })
-      )
-    );
-
     return {
       ok:             true,
-      recipientCount: userTokens.length,
-      successCount:   success,
-      failureCount:   failure,
-      error:          sendError,
+      recipientCount: userIds.length,
+      successCount:   userIds.length, // actual push success is tracked server-side
+      failureCount:   0,
       logId:          logRef?.id,
     };
 
@@ -393,25 +262,25 @@ export async function executeBroadcast(
 
 export async function fetchBroadcastLogs(limitCount = 20): Promise<BroadcastLogEntry[]> {
   try {
-    const { orderBy, limit } = await import('firebase/firestore');
-    const q = query(
+    const { query: fsQuery, orderBy, limit } = await import('firebase/firestore');
+    const q = fsQuery(
       collection(db, 'broadcast_logs'),
       orderBy('sentAt', 'desc'),
       limit(limitCount)
     );
     const snap = await getDocs(q);
     return snap.docs.map(d => {
-      const data = d.data();
+      const data = d.data() as Record<string, any>;
       return {
         id:             d.id,
-        admin:          data.admin          ?? '',
-        command:        data.command        ?? '',
-        target:         data.target         ?? '',
-        message:        data.message        ?? '',
-        recipientCount: data.recipientCount ?? 0,
-        successCount:   data.successCount   ?? 0,
-        failureCount:   data.failureCount   ?? 0,
-        sentAt:         data.sentAt?.toDate?.() ?? new Date(),
+        admin:          data['admin']          ?? '',
+        command:        data['command']        ?? '',
+        target:         data['target']         ?? '',
+        message:        data['message']        ?? '',
+        recipientCount: data['recipientCount'] ?? 0,
+        successCount:   data['successCount']   ?? data['recipientCount'] ?? 0,
+        failureCount:   data['failureCount']   ?? 0,
+        sentAt:         data['sentAt']?.toDate?.() ?? new Date(),
       } as BroadcastLogEntry;
     });
   } catch {

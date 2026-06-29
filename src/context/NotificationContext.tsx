@@ -30,6 +30,7 @@ import {
   listenForNotificationClicks,
   capturePWAInstallPrompt,
 } from '../services/notifications/pushNotificationService';
+import { sendLoginNotification } from '../services/notifications/loginNotificationService';
 import type { AppNotification, NotificationSettings } from '../types/notifications';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../types/notifications';
 
@@ -102,16 +103,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return unsub;
   }, [uid]);
 
-  // ── FCM token setup ──────────────────────────────────────────────────────────
+  // ── FCM token setup + login notification ────────────────────────────────────
   useEffect(() => {
     if (!uid) { setPushEnabled(false); return; }
 
+    const email = (user as any)?.email as string | undefined;
     const currentPerm = getPushPermissionState();
     setPushPermission(currentPerm);
 
     if (currentPerm === 'granted') {
       initFCMToken(uid)
-        .then(token => setPushEnabled(!!token))
+        .then(token => {
+          setPushEnabled(!!token);
+          if (token) {
+            // Token is fresh/confirmed — fire login notification
+            sendLoginNotification(uid, email).catch(() => {});
+          }
+        })
         .catch(() => setPushEnabled(false));
     }
 
@@ -123,6 +131,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (perm === 'granted') {
           const token = await initFCMToken(uid).catch(() => null);
           setPushEnabled(!!token);
+          if (token) {
+            // Permission just granted — fire login notification immediately
+            sendLoginNotification(uid, email).catch(() => {});
+          }
         }
       }, 3000);
       return () => clearTimeout(timer);
