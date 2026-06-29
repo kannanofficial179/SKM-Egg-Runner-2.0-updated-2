@@ -1,30 +1,33 @@
 /**
  * SKM Admin Broadcast Service
  *
- * Parses developer notify commands and creates Firestore notification documents.
- * The Cloud Function (functions/src/index.ts onNotificationCreated) picks up each
- * new document and dispatches the real FCM push to every target device.
+ * Architecture (Spark plan — no Cloud Functions):
  *
- * Supported commands
- * ──────────────────
- *   notify: <message>                → all users
- *   notify game: <message>           → users who have played a game
- *   notify protein: <message>        → users who have used protein tracker
- *   notify uid:<uid> <message>       → one specific user
- *   notify topic:<topic> <message>   → a named topic group
+ *   Admin types: notify: Hello everyone
+ *         ↓
+ *   executeBroadcast()
+ *         ↓
+ *   1. Query Firestore → collect all user FCM tokens
+ *   2. POST /api/send-notification (Vercel serverless)
+ *         ↓
+ *   Vercel function → FCM Legacy HTTP API (server key)
+ *         ↓
+ *   Real push notification on every Android device
+ *         ↓
+ *   3. Write notification docs to Firestore (in-app history)
+ *   4. Write broadcast log entry
  *
- * Flow
- * ────
- *   Admin types command
- *     → parseNotifyCommand()
- *     → executeBroadcast()
- *     → createNotification() per user (or targetAll flag)
- *     → Cloud Function reads FCM token → sends push
- *     → broadcastLog entry written to Firestore
+ * Supported commands:
+ *   notify: <message>               → all users
+ *   notify game: <message>          → game players
+ *   notify protein: <message>       → protein tracker users
+ *   notify uid:<uid> <message>      → one specific user
+ *   notify topic:<topic> <message>  → named topic group
  */
 
 import {
-  collection, getDocs, addDoc, serverTimestamp, query, where,
+  collection, getDocs, addDoc, serverTimestamp, query,
+  where, doc, getDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import type { NotificationType } from '../../types/notifications';
@@ -45,12 +48,12 @@ export interface ParsedNotifyCommand {
 }
 
 export interface BroadcastResult {
-  ok:           boolean;
+  ok:             boolean;
   recipientCount: number;
-  successCount:  number;
-  failureCount:  number;
-  error?:        string;
-  logId?:        string;
+  successCount:   number;
+  failureCount:   number;
+  error?:         string;
+  logId?:         string;
 }
 
 export interface BroadcastLogEntry {
@@ -67,111 +70,34 @@ export interface BroadcastLogEntry {
 
 // ─── Command parser ───────────────────────────────────────────────────────────
 
-/**
- * Parse a raw notify command string.
- * Returns null if the syntax doesn't match any supported pattern.
- *
- * Examples:
- *   "notify: Hello everyone"          → { target: { kind: 'all' }, message: 'Hello everyone' }
- *   "notify game: New challenge!"     → { target: { kind: 'game' }, message: 'New challenge!' }
- *   "notify protein: Check your goal" → { target: { kind: 'protein' }, message: 'Check your goal' }
- *   "notify uid:abc123 Test"          → { target: { kind: 'uid', uid: 'abc123' }, message: 'Test' }
- *   "notify topic:golden Golden event"→ { target: { kind: 'topic', topic: 'golden' }, message: 'Golden event' }
- */
 export function parseNotifyCommand(raw: string): ParsedNotifyCommand | null {
   const trimmed = raw.trim();
   if (!trimmed.toLowerCase().startsWith('notify')) return null;
 
   // notify uid:<uid> <message>
   const uidMatch = trimmed.match(/^notify\s+uid:(\S+)\s+(.+)$/i);
-  if (uidMatch) {
-    return {
-      target:  { kind: 'uid', uid: uidMatch[1] },
-      message: uidMatch[2].trim(),
-      raw:     trimmed,
-    };
-  }
+  if (uidMatch) return { target: { kind: 'uid', uid: uidMatch[1] }, message: uidMatch[2].trim(), raw: trimmed };
 
   // notify topic:<topic> <message>
   const topicMatch = trimmed.match(/^notify\s+topic:(\S+)\s+(.+)$/i);
-  if (topicMatch) {
-    return {
-      target:  { kind: 'topic', topic: topicMatch[1] },
-      message: topicMatch[2].trim(),
-      raw:     trimmed,
-    };
-  }
+  if (topicMatch) return { target: { kind: 'topic', topic: topicMatch[1] }, message: topicMatch[2].trim(), raw: trimmed };
 
   // notify game: <message>
   const gameMatch = trimmed.match(/^notify\s+game:\s*(.+)$/i);
-  if (gameMatch) {
-    return {
-      target:  { kind: 'game' },
-      message: gameMatch[1].trim(),
-      raw:     trimmed,
-    };
-  }
+  if (gameMatch) return { target: { kind: 'game' }, message: gameMatch[1].trim(), raw: trimmed };
 
   // notify protein: <message>
   const proteinMatch = trimmed.match(/^notify\s+protein:\s*(.+)$/i);
-  if (proteinMatch) {
-    return {
-      target:  { kind: 'protein' },
-      message: proteinMatch[1].trim(),
-      raw:     trimmed,
-    };
-  }
+  if (proteinMatch) return { target: { kind: 'protein' }, message: proteinMatch[1].trim(), raw: trimmed };
 
-  // notify: <message>  (all users)
+  // notify: <message>
   const allMatch = trimmed.match(/^notify:\s*(.+)$/i);
-  if (allMatch) {
-    return {
-      target:  { kind: 'all' },
-      message: allMatch[1].trim(),
-      raw:     trimmed,
-    };
-  }
+  if (allMatch) return { target: { kind: 'all' }, message: allMatch[1].trim(), raw: trimmed };
 
   return null;
 }
 
-// ─── Resolve target user IDs ──────────────────────────────────────────────────
-
-async function resolveTargetUserIds(target: BroadcastTarget): Promise<string[]> {
-  switch (target.kind) {
-    case 'all': {
-      const snap = await getDocs(collection(db, 'users'));
-      return snap.docs.map(d => d.id);
-    }
-
-    case 'uid':
-      return [target.uid];
-
-    case 'game': {
-      // Users who have at least one game_stats document
-      const snap = await getDocs(collection(db, 'game_stats'));
-      return snap.docs.map(d => d.id);
-    }
-
-    case 'protein': {
-      // Users who have a protein_logs collection (at least one entry)
-      // We query the top-level protein_logs collection for unique parent UIDs
-      const snap = await getDocs(collection(db, 'daily_stats'));
-      const uids = new Set<string>(snap.docs.map(d => d.id));
-      return Array.from(uids);
-    }
-
-    case 'topic': {
-      // For topics we send to all users but tag it — the Cloud Function or FCM handles topic routing
-      // For simplicity we resolve to all users here and let the notification metadata carry the topic
-      const snap = await getDocs(collection(db, 'users'));
-      return snap.docs.map(d => d.id);
-    }
-
-    default:
-      return [];
-  }
-}
+// ─── Target label ─────────────────────────────────────────────────────────────
 
 function targetLabel(target: BroadcastTarget): string {
   switch (target.kind) {
@@ -183,116 +109,193 @@ function targetLabel(target: BroadcastTarget): string {
   }
 }
 
+// ─── Resolve FCM tokens for target ───────────────────────────────────────────
+
+interface UserToken {
+  uid:      string;
+  fcmToken: string;
+}
+
+async function resolveTokens(target: BroadcastTarget): Promise<UserToken[]> {
+  switch (target.kind) {
+
+    case 'all': {
+      // All users that have registered an FCM token
+      const snap = await getDocs(
+        query(collection(db, 'users'), where('fcmToken', '!=', null))
+      );
+      const tokens: UserToken[] = [];
+      snap.forEach(d => {
+        const token = d.data().fcmToken as string | undefined;
+        if (token && token.trim()) tokens.push({ uid: d.id, fcmToken: token });
+      });
+      return tokens;
+    }
+
+    case 'uid': {
+      const userDoc = await getDoc(doc(db, 'users', target.uid));
+      const token   = userDoc.data()?.fcmToken as string | undefined;
+      if (token && token.trim()) return [{ uid: target.uid, fcmToken: token }];
+      return [];
+    }
+
+    case 'game': {
+      // Users who have at least one game_stats document AND have an FCM token
+      const gameSnap = await getDocs(collection(db, 'game_stats'));
+      const gameUids = gameSnap.docs.map(d => d.id);
+      return resolveTokensForUids(gameUids);
+    }
+
+    case 'protein': {
+      // Users who have daily_stats AND have an FCM token
+      const statsSnap = await getDocs(collection(db, 'daily_stats'));
+      const proteinUids = [...new Set(statsSnap.docs.map(d => d.id))];
+      return resolveTokensForUids(proteinUids);
+    }
+
+    case 'topic': {
+      // For now, topic = all users with token (topic subscription not implemented client-side yet)
+      const snap = await getDocs(
+        query(collection(db, 'users'), where('fcmToken', '!=', null))
+      );
+      const tokens: UserToken[] = [];
+      snap.forEach(d => {
+        const token = d.data().fcmToken as string | undefined;
+        if (token && token.trim()) tokens.push({ uid: d.id, fcmToken: token });
+      });
+      return tokens;
+    }
+
+    default:
+      return [];
+  }
+}
+
+// Fetch fcmToken for a list of UIDs in parallel batches
+async function resolveTokensForUids(uids: string[]): Promise<UserToken[]> {
+  const results: UserToken[] = [];
+  const BATCH = 20;
+  for (let i = 0; i < uids.length; i += BATCH) {
+    const chunk = uids.slice(i, i + BATCH);
+    const docs  = await Promise.all(chunk.map(uid => getDoc(doc(db, 'users', uid))));
+    docs.forEach((d, idx) => {
+      const token = d.data()?.fcmToken as string | undefined;
+      if (token && token.trim()) results.push({ uid: chunk[idx], fcmToken: token });
+    });
+  }
+  return results;
+}
+
+// ─── Send via Vercel API route ────────────────────────────────────────────────
+
+async function sendViaPushAPI(
+  tokens: string[],
+  title:  string,
+  body:   string,
+  data:   Record<string, string>
+): Promise<{ success: number; failure: number }> {
+  if (tokens.length === 0) return { success: 0, failure: 0 };
+
+  try {
+    const resp = await fetch('/api/send-notification', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens, title, body, data }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => resp.statusText);
+      console.error('[Broadcast] API error:', resp.status, errText);
+      return { success: 0, failure: tokens.length };
+    }
+
+    const result = await resp.json();
+    return {
+      success: result.success ?? 0,
+      failure: result.failure ?? tokens.length,
+    };
+  } catch (err) {
+    console.error('[Broadcast] fetch error:', err);
+    return { success: 0, failure: tokens.length };
+  }
+}
+
 // ─── Execute broadcast ────────────────────────────────────────────────────────
 
-/**
- * Execute a parsed notify command.
- * Creates one Firestore notification document per target user.
- * The Cloud Function onNotificationCreated fires for each document
- * and dispatches the real FCM push.
- *
- * @param parsed  - Result of parseNotifyCommand()
- * @param adminId - UID of the admin sending the broadcast
- */
 export async function executeBroadcast(
-  parsed: ParsedNotifyCommand,
+  parsed:  ParsedNotifyCommand,
   adminId: string
 ): Promise<BroadcastResult> {
-  const title   = 'SKM Announcement';
+  const title = 'SKM Announcement';
   const type: NotificationType = 'admin_announcement';
 
   try {
-    // 1. Resolve target users
-    const userIds = await resolveTargetUserIds(parsed.target);
+    // 1. Resolve FCM tokens for the target group
+    const userTokens = await resolveTokens(parsed.target);
 
-    if (userIds.length === 0) {
-      return { ok: false, recipientCount: 0, successCount: 0, failureCount: 0, error: 'No matching users found.' };
+    if (userTokens.length === 0) {
+      return {
+        ok: false, recipientCount: 0, successCount: 0, failureCount: 0,
+        error: 'No devices with push notifications registered. Users need to open the app first to register their device.',
+      };
     }
 
-    // 2. Create notification documents — Cloud Function picks each up and sends push
-    const isTargetAll = parsed.target.kind === 'all';
-    let successCount  = 0;
-    let failureCount  = 0;
+    const fcmTokens = userTokens.map(u => u.fcmToken);
 
-    // For "all" broadcasts, create ONE sentinel document with targetAll=true.
-    // The Cloud Function queries all fcmTokens and multicasts in one pass.
-    if (isTargetAll) {
+    // 2. Send real push via Vercel API → FCM Legacy HTTP
+    const { success, failure } = await sendViaPushAPI(
+      fcmTokens,
+      title,
+      parsed.message,
+      {
+        type,
+        adminId,
+        command: parsed.raw,
+        target:  targetLabel(parsed.target),
+      }
+    );
+
+    // 3. Write in-app notification docs to Firestore (notification history)
+    //    Only for specific-user or small groups — skip for "all" to avoid 1000s of writes
+    if (parsed.target.kind === 'uid') {
       await addDoc(collection(db, 'notifications'), {
-        userId:    '__broadcast__',
+        userId:    parsed.target.uid,
         title,
         message:   parsed.message,
         type,
         priority:  'high',
         read:      false,
-        targetAll: true,
-        metadata:  {
-          adminId,
-          command:   parsed.raw,
-          target:    targetLabel(parsed.target),
-        },
+        targetAll: false,
+        metadata:  { adminId, command: parsed.raw, target: targetLabel(parsed.target) },
         createdAt: serverTimestamp(),
-      });
-      successCount = userIds.length;
-    } else {
-      // Per-user: batch in chunks of 10 concurrent writes
-      const CHUNK = 10;
-      for (let i = 0; i < userIds.length; i += CHUNK) {
-        const chunk = userIds.slice(i, i + CHUNK);
-        const results = await Promise.allSettled(
-          chunk.map(uid =>
-            addDoc(collection(db, 'notifications'), {
-              userId:    uid,
-              title,
-              message:   parsed.message,
-              type,
-              priority:  'high',
-              read:      false,
-              targetAll: false,
-              metadata:  {
-                adminId,
-                command:   parsed.raw,
-                target:    targetLabel(parsed.target),
-                ...(parsed.target.kind === 'topic' ? { topic: parsed.target.topic } : {}),
-              },
-              createdAt: serverTimestamp(),
-            })
-          )
-        );
-        results.forEach(r => {
-          if (r.status === 'fulfilled') successCount++;
-          else failureCount++;
-        });
-      }
+      }).catch(() => {});
     }
 
-    // 3. Write broadcast log to Firestore
+    // 4. Write broadcast log
     const logRef = await addDoc(collection(db, 'broadcast_logs'), {
       admin:          adminId,
       command:        parsed.raw,
       target:         targetLabel(parsed.target),
       message:        parsed.message,
-      recipientCount: userIds.length,
-      successCount,
-      failureCount,
+      recipientCount: userTokens.length,
+      successCount:   success,
+      failureCount:   failure,
       sentAt:         serverTimestamp(),
-    });
+    }).catch(() => null);
 
     return {
-      ok:             true,
-      recipientCount: userIds.length,
-      successCount,
-      failureCount,
-      logId:          logRef.id,
+      ok:             success > 0 || failure === 0,
+      recipientCount: userTokens.length,
+      successCount:   success,
+      failureCount:   failure,
+      logId:          logRef?.id,
     };
 
   } catch (err: any) {
-    console.error('[AdminBroadcast] executeBroadcast error:', err);
+    console.error('[Broadcast] executeBroadcast error:', err);
     return {
-      ok:             false,
-      recipientCount: 0,
-      successCount:   0,
-      failureCount:   0,
-      error:          err?.message ?? String(err),
+      ok: false, recipientCount: 0, successCount: 0, failureCount: 0,
+      error: err?.message ?? String(err),
     };
   }
 }
