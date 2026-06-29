@@ -104,9 +104,10 @@ export const onNotificationCreated = onDocumentCreated(
     }
 
     const { userId, title, message, type, priority, actionUrl, metadata } = data;
-    // targetAll is true either via explicit flag or the __broadcast__ sentinel userId
     const targetAll = data.targetAll || userId === '__broadcast__';
     const clickAction = clickActionFor(type, actionUrl);
+
+    logger.info(`[FCM] STEP 6 — Cloud Function Triggered ✓ notifId=${notifId} userId=${userId} type=${type} targetAll=${targetAll}`);
 
     try {
       if (targetAll) {
@@ -159,7 +160,7 @@ export const onNotificationCreated = onDocumentCreated(
           };
 
           const response = await messaging.sendEachForMulticast(multicast);
-          logger.info(`[FCM] Broadcast chunk ${i / CHUNK + 1}: success=${response.successCount} fail=${response.failureCount}`);
+          logger.info(`[FCM] STEP 7 — Broadcast chunk ${Math.floor(i / CHUNK) + 1}: success=${response.successCount} fail=${response.failureCount}`);
 
           // Clean up invalid tokens
           await cleanupInvalidTokens(response, chunk);
@@ -208,7 +209,14 @@ export const onNotificationCreated = onDocumentCreated(
         };
 
         await messaging.send(msg);
-        logger.info('[FCM] Push sent to uid:', userId, 'type:', type);
+        logger.info('[FCM] STEP 7 — Push Notification Sent ✓ uid:', userId, 'type:', type);
+
+        // Write delivery confirmation back to the notification doc.
+        // The client watches for this field to confirm the pipeline worked end-to-end.
+        await db.collection('notifications').doc(notifId).update({
+          fcmDelivered: true,
+          fcmDeliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(e => logger.warn('[FCM] Could not write delivery confirmation:', e?.message));
       }
 
     } catch (err) {

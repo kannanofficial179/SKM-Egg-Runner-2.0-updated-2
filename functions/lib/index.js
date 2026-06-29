@@ -100,9 +100,9 @@ exports.onNotificationCreated = (0, firestore_1.onDocumentCreated)('notification
         return;
     }
     const { userId, title, message, type, priority, actionUrl, metadata } = data;
-    // targetAll is true either via explicit flag or the __broadcast__ sentinel userId
     const targetAll = data.targetAll || userId === '__broadcast__';
     const clickAction = clickActionFor(type, actionUrl);
+    firebase_functions_1.logger.info(`[FCM] STEP 6 — Cloud Function Triggered ✓ notifId=${notifId} userId=${userId} type=${type} targetAll=${targetAll}`);
     try {
         if (targetAll) {
             // ── Broadcast to ALL users ─────────────────────────────────────────
@@ -147,7 +147,7 @@ exports.onNotificationCreated = (0, firestore_1.onDocumentCreated)('notification
                     },
                 };
                 const response = await messaging.sendEachForMulticast(multicast);
-                firebase_functions_1.logger.info(`[FCM] Broadcast chunk ${i / CHUNK + 1}: success=${response.successCount} fail=${response.failureCount}`);
+                firebase_functions_1.logger.info(`[FCM] STEP 7 — Broadcast chunk ${Math.floor(i / CHUNK) + 1}: success=${response.successCount} fail=${response.failureCount}`);
                 // Clean up invalid tokens
                 await cleanupInvalidTokens(response, chunk);
             }
@@ -188,7 +188,13 @@ exports.onNotificationCreated = (0, firestore_1.onDocumentCreated)('notification
                 },
             };
             await messaging.send(msg);
-            firebase_functions_1.logger.info('[FCM] Push sent to uid:', userId, 'type:', type);
+            firebase_functions_1.logger.info('[FCM] STEP 7 — Push Notification Sent ✓ uid:', userId, 'type:', type);
+            // Write delivery confirmation back to the notification doc.
+            // The client watches for this field to confirm the pipeline worked end-to-end.
+            await db.collection('notifications').doc(notifId).update({
+                fcmDelivered: true,
+                fcmDeliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+            }).catch(e => firebase_functions_1.logger.warn('[FCM] Could not write delivery confirmation:', e === null || e === void 0 ? void 0 : e.message));
         }
     }
     catch (err) {

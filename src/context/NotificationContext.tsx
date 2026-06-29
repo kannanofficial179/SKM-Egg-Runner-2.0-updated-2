@@ -103,42 +103,63 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return unsub;
   }, [uid]);
 
-  // ── FCM token setup + login notification ────────────────────────────────────
+  // ── FCM token setup + login notification ─────────────────────────────────────
   useEffect(() => {
-    if (!uid) { setPushEnabled(false); return; }
+    if (!uid) {
+      setPushEnabled(false);
+      return;
+    }
 
-    const email = (user as any)?.email as string | undefined;
+    const email       = (user as any)?.email as string | undefined;
     const currentPerm = getPushPermissionState();
     setPushPermission(currentPerm);
 
-    if (currentPerm === 'granted') {
-      initFCMToken(uid)
-        .then(token => {
-          setPushEnabled(!!token);
-          if (token) {
-            // Token is fresh/confirmed — fire login notification
-            sendLoginNotification(uid, email).catch(() => {});
-          }
-        })
-        .catch(() => setPushEnabled(false));
-    }
+    console.info('[FCM] User logged in. uid:', uid, '| notification permission:', currentPerm);
 
-    // Request permission once on first login (after 3s so user is settled)
-    if (currentPerm === 'default' && !hasAskedPermission()) {
-      const timer = setTimeout(async () => {
-        const perm = await requestPushPermission();
-        setPushPermission(perm);
-        if (perm === 'granted') {
-          const token = await initFCMToken(uid).catch(() => null);
+    const run = async () => {
+      let permToUse = currentPerm;
+
+      // If permission is already granted → go straight to token init
+      if (permToUse === 'granted') {
+        console.info('[FCM] Permission already granted — initializing FCM token...');
+        const token = await initFCMToken(uid);
+        setPushEnabled(!!token);
+        if (token) {
+          await sendLoginNotification(uid, email);
+        }
+        return;
+      }
+
+      // If permission is default → request it (always, not just first time)
+      if (permToUse === 'default') {
+        console.info('[FCM] Permission is default — will request in 2s...');
+        await new Promise(r => setTimeout(r, 2000));
+        permToUse = await requestPushPermission();
+        setPushPermission(permToUse);
+
+        if (permToUse === 'granted') {
+          const token = await initFCMToken(uid);
           setPushEnabled(!!token);
           if (token) {
-            // Permission just granted — fire login notification immediately
-            sendLoginNotification(uid, email).catch(() => {});
+            await sendLoginNotification(uid, email);
           }
         }
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
+        return;
+      }
+
+      // Denied or unsupported
+      console.warn('[FCM] Push notifications not available. Permission:', permToUse);
+      if (permToUse === 'denied') {
+        console.warn('[FCM] User blocked notifications. To re-enable:');
+        console.warn('[FCM]   Chrome: address bar lock icon → Notifications → Allow');
+        console.warn('[FCM]   Android: Settings → Apps → Chrome → Notifications → Allow');
+      }
+    };
+
+    run().catch(err => {
+      console.error('[FCM] FCM setup error (non-fatal):', err?.message ?? err);
+      setPushEnabled(false);
+    });
   }, [uid]);
 
   // ── FCM foreground handler — NO popup, just log silently ────────────────────

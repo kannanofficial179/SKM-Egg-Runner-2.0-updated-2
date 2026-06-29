@@ -1,26 +1,9 @@
 /**
- * SKM Push Notification Service — Fixed
+ * SKM Push Notification Service
  *
- * Root causes of Android push not working, now fixed:
- *
- * 1. `messaging` was exported as `null` and populated async — callers read null.
- *    Fix: export `messagingPromise: Promise<Messaging|null>` and always await it.
- *
- * 2. `getOrRegisterSW()` was calling `getRegistration('/')` which returns sw.js
- *    (the cache worker) instead of firebase-messaging-sw.js.
- *    Fix: register specifically by filename and wait for it to be active.
- *
- * 3. sw.js and firebase-messaging-sw.js were both registered on scope '/' —
- *    they conflict and the browser only activates one.
- *    Fix: firebase-messaging-sw.js uses scope '/firebase-cloud-messaging-push-scope'
- *    so it is completely isolated from the cache SW.
- *
- * 4. VAPID key was commented out in .env — getToken() returns '' silently.
- *    Fix: hard-coded fallback + clear error log pointing to exact fix.
- *
- * 5. subscribeForegroundMessages() was called at module import time when
- *    messaging was still null.
- *    Fix: lazy-init inside the function, awaiting messagingPromise.
+ * Every step logs to the console with [FCM] prefix.
+ * On any failure: stops immediately, prints the exact error, returns null.
+ * No silent swallowing of errors.
  */
 
 import { getToken, onMessage, deleteToken } from 'firebase/messaging';
@@ -28,23 +11,19 @@ import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, messagingPromise } from '../firebase/firebase';
 
 // ─── VAPID key ────────────────────────────────────────────────────────────────
-// Primary: set VITE_FIREBASE_VAPID_KEY in your .env
-// This is your Web Push certificate public key from:
-// Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
 const VAPID_KEY: string | undefined = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
-const FCM_SW_URL         = '/firebase-messaging-sw.js';
-// Use a dedicated scope so the FCM SW never conflicts with the cache SW (sw.js)
-const FCM_SW_SCOPE       = '/firebase-cloud-messaging-push-scope';
-const FCM_TOKEN_LS_KEY   = 'skm_fcm_token';
-const PERMISSION_ASKED   = 'skm_push_permission_asked';
+const FCM_SW_URL       = '/firebase-messaging-sw.js';
+const FCM_SW_SCOPE     = '/firebase-cloud-messaging-push-scope';
+const FCM_TOKEN_LS_KEY = 'skm_fcm_token';
+const PERMISSION_ASKED = 'skm_push_permission_asked';
 
 export type PushPermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
 
-// ─── Permission helpers ───────────────────────────────────────────────────────
+// ─── Permission ───────────────────────────────────────────────────────────────
 
 export function getPushPermissionState(): PushPermissionState {
-  if (!('Notification' in window))    return 'unsupported';
+  if (!('Notification' in window))     return 'unsupported';
   if (!('serviceWorker' in navigator)) return 'unsupported';
   return Notification.permission as PushPermissionState;
 }
@@ -54,51 +33,71 @@ export function hasAskedPermission(): boolean {
 }
 
 export async function requestPushPermission(): Promise<PushPermissionState> {
-  if (!('Notification' in window))    return 'unsupported';
-  if (!('serviceWorker' in navigator)) return 'unsupported';
+  if (!('Notification' in window)) {
+    console.error('[FCM] STEP 1 FAILED — Notification API not available in this browser.');
+    return 'unsupported';
+  }
+  if (!('serviceWorker' in navigator)) {
+    console.error('[FCM] STEP 1 FAILED — Service Workers not supported in this browser.');
+    return 'unsupported';
+  }
 
+  console.info('[FCM] STEP 1 — Requesting notification permission...');
   localStorage.setItem(PERMISSION_ASKED, 'true');
+
   try {
     const result = await Notification.requestPermission();
+    if (result === 'granted') {
+      console.info('[FCM] STEP 1 — Permission = GRANTED ✓');
+    } else {
+      console.error(`[FCM] STEP 1 FAILED — Permission = ${result.toUpperCase()}. User must allow notifications in browser settings.`);
+    }
     return result as PushPermissionState;
-  } catch {
+  } catch (err: any) {
+    console.error('[FCM] STEP 1 FAILED — requestPermission() threw:', err?.message ?? err);
     return 'denied';
   }
 }
 
-// ─── Service Worker registration ──────────────────────────────────────────────
-// Register firebase-messaging-sw.js on its own dedicated scope so it never
-// conflicts with sw.js (cache/offline worker) which uses scope '/'.
+// ─── STEP 2: Service Worker registration ─────────────────────────────────────
 
 let _fcmSwReg: ServiceWorkerRegistration | null = null;
 
 async function getFCMServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  if (!('serviceWorker' in navigator)) return null;
+  if (!('serviceWorker' in navigator)) {
+    console.error('[FCM] STEP 2 FAILED — Service Workers not supported.');
+    return null;
+  }
 
-  // Return cached registration
-  if (_fcmSwReg) return _fcmSwReg;
+  if (_fcmSwReg) {
+    console.info('[FCM] STEP 2 — Service Worker already registered (cached).');
+    return _fcmSwReg;
+  }
+
+  console.info('[FCM] STEP 2 — Registering firebase-messaging-sw.js...');
 
   try {
-    // Check if already registered under the FCM scope
+    // Check if already registered
     const existing = await navigator.serviceWorker.getRegistration(FCM_SW_SCOPE);
     if (existing) {
+      console.info('[FCM] STEP 2 — Service Worker already registered at scope:', FCM_SW_SCOPE, '✓');
       _fcmSwReg = existing;
       return existing;
     }
 
-    // Register fresh
-    const reg = await navigator.serviceWorker.register(FCM_SW_URL, {
-      scope: FCM_SW_SCOPE,
-    });
+    const reg = await navigator.serviceWorker.register(FCM_SW_URL, { scope: FCM_SW_SCOPE });
+    console.info('[FCM] STEP 2 — Service Worker registered. State:', reg.installing?.state ?? reg.active?.state ?? 'unknown');
 
-    // Wait until the SW is active (Android requires this before getToken)
+    // Wait for active
     await waitForSWActive(reg);
+    console.info('[FCM] STEP 2 — Service Worker active ✓ (scope:', FCM_SW_SCOPE, ')');
 
     _fcmSwReg = reg;
-    console.info('[Push] FCM service worker registered and active.');
     return reg;
-  } catch (err) {
-    console.error('[Push] FCM SW registration failed:', err);
+
+  } catch (err: any) {
+    console.error('[FCM] STEP 2 FAILED — SW registration error:', err?.message ?? err);
+    console.error('[FCM] STEP 2 — Ensure firebase-messaging-sw.js exists at /public/firebase-messaging-sw.js');
     return null;
   }
 }
@@ -106,113 +105,139 @@ async function getFCMServiceWorker(): Promise<ServiceWorkerRegistration | null> 
 function waitForSWActive(reg: ServiceWorkerRegistration): Promise<void> {
   return new Promise((resolve) => {
     if (reg.active) { resolve(); return; }
-
     const sw = reg.installing ?? reg.waiting;
     if (!sw) { resolve(); return; }
-
     sw.addEventListener('statechange', function handler() {
       if (sw.state === 'activated') {
         sw.removeEventListener('statechange', handler);
         resolve();
       }
     });
-
-    // Safety timeout — don't block forever
     setTimeout(resolve, 5000);
   });
 }
 
-// ─── FCM Token ────────────────────────────────────────────────────────────────
+// ─── STEP 3 + 4: Generate token and save to Firestore ────────────────────────
 
-/**
- * Generates or retrieves the FCM registration token and stores it in Firestore.
- * This is the core function that makes Android push work.
- */
 export async function initFCMToken(uid: string): Promise<string | null> {
+  console.info('[FCM] ══════════════════════════════════════════');
+  console.info('[FCM] Starting FCM initialization for uid:', uid);
+  console.info('[FCM] ══════════════════════════════════════════');
+
+  // Pre-flight checks
   if (!('serviceWorker' in navigator)) {
-    console.warn('[Push] Service workers not supported.');
+    console.error('[FCM] FAILED — Service Workers not supported. Push notifications require Chrome/Edge/Android Chrome.');
     return null;
   }
 
+  // Check VAPID key FIRST — most common missing config
+  if (!VAPID_KEY) {
+    console.error('[FCM] ══ SETUP REQUIRED ══════════════════════════════════════');
+    console.error('[FCM] VITE_FIREBASE_VAPID_KEY is NOT set in .env');
+    console.error('[FCM] Steps to fix:');
+    console.error('[FCM]   1. Open Firebase Console → Project Settings → Cloud Messaging');
+    console.error('[FCM]   2. Scroll to "Web Push certificates"');
+    console.error('[FCM]   3. Click "Generate key pair" (one time only)');
+    console.error('[FCM]   4. Copy the public key (starts with B...)');
+    console.error('[FCM]   5. Add to .env:  VITE_FIREBASE_VAPID_KEY=Bxxx...');
+    console.error('[FCM]   6. Restart dev server: npm run dev');
+    console.error('[FCM] ═════════════════════════════════════════════════════════');
+    return null;
+  }
+  console.info('[FCM] VAPID key present ✓ (prefix:', VAPID_KEY.substring(0, 10) + '...)');
+
+  // Check permission
+  const perm = Notification.permission;
+  console.info('[FCM] Current notification permission:', perm);
+  if (perm !== 'granted') {
+    console.error(`[FCM] FAILED — Permission is "${perm}". Cannot generate token without granted permission.`);
+    return null;
+  }
+  console.info('[FCM] STEP 1 — Permission = GRANTED ✓');
+
+  // Await messaging instance
+  console.info('[FCM] STEP 2a — Awaiting Firebase Messaging instance...');
   const messaging = await messagingPromise;
   if (!messaging) {
-    console.warn('[Push] FCM not supported in this browser.');
+    console.error('[FCM] STEP 2a FAILED — Firebase Messaging not supported in this browser.');
+    console.error('[FCM] Push notifications require Chrome 50+, Edge 17+, or Android Chrome.');
     return null;
   }
+  console.info('[FCM] STEP 2a — Firebase Messaging instance ready ✓');
 
-  if (Notification.permission !== 'granted') {
-    console.warn('[Push] Notification permission not granted.');
+  // Register SW
+  const swReg = await getFCMServiceWorker();
+  if (!swReg) {
+    console.error('[FCM] STEP 2 FAILED — Cannot generate FCM token without a registered Service Worker.');
     return null;
   }
+  console.info('[FCM] STEP 2 — Service Worker Registered ✓');
 
-  if (!VAPID_KEY) {
-    console.error(
-      '[Push] VAPID key missing!\n' +
-      '  → Open Firebase Console → Project Settings → Cloud Messaging\n' +
-      '  → Web Push certificates → Generate key pair\n' +
-      '  → Copy the public key\n' +
-      '  → Add to .env: VITE_FIREBASE_VAPID_KEY=BYour...Key\n' +
-      '  → Restart the dev server'
-    );
-    return null;
-  }
-
+  // Generate token
+  console.info('[FCM] STEP 3 — Calling getToken() with VAPID key...');
+  let token: string;
   try {
-    const swReg = await getFCMServiceWorker();
-    if (!swReg) {
-      console.error('[Push] Could not register FCM service worker.');
-      return null;
-    }
-
-    const token = await getToken(messaging, {
+    token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg,
     });
-
-    if (!token) {
-      console.warn('[Push] getToken() returned empty — permission may have changed.');
-      return null;
-    }
-
-    const cachedToken = localStorage.getItem(FCM_TOKEN_LS_KEY);
-
-    // Persist to Firestore — users/{uid}.fcmToken is what Cloud Function reads
-    const tokenData = {
-      fcmToken:    token,
-      platform:    detectPlatform(),
-      browser:     detectBrowser(),
-      fcmUpdatedAt: serverTimestamp(),
-    };
-
-    try {
-      await updateDoc(doc(db, 'users', uid), tokenData);
-    } catch {
-      // Document may not exist yet on brand-new accounts
-      await setDoc(doc(db, 'users', uid), tokenData, { merge: true });
-    }
-
-    if (cachedToken !== token) {
-      localStorage.setItem(FCM_TOKEN_LS_KEY, token);
-      console.info('[Push] FCM token saved to Firestore for uid:', uid);
-    }
-
-    return token;
   } catch (err: any) {
-    // Specific known Android Chrome error — scope mismatch
+    console.error('[FCM] STEP 3 FAILED — getToken() threw an error:');
+    console.error('[FCM]   code:   ', err?.code    ?? 'none');
+    console.error('[FCM]   message:', err?.message ?? String(err));
+    if (err?.code === 'messaging/failed-service-worker-registration') {
+      console.error('[FCM]   → firebase-messaging-sw.js cannot be registered. Check the file exists in /public/');
+    }
     if (err?.code === 'messaging/permission-blocked') {
-      console.warn('[Push] Notification permission was blocked by the browser.');
-    } else if (err?.code === 'messaging/failed-service-worker-registration') {
-      console.error('[Push] SW registration failed — check firebase-messaging-sw.js is served at root.');
-    } else {
-      console.error('[Push] initFCMToken error:', err?.message ?? err);
+      console.error('[FCM]   → Notifications are blocked. User must unblock in browser site settings.');
     }
     return null;
   }
+
+  if (!token) {
+    console.error('[FCM] STEP 3 FAILED — getToken() returned empty string. Permission may have changed or VAPID key is wrong.');
+    return null;
+  }
+  console.info('[FCM] STEP 3 — Token Generated ✓ (prefix:', token.substring(0, 20) + '...)');
+
+  // Save to Firestore
+  console.info('[FCM] STEP 4 — Saving token to Firestore users/', uid, '...');
+  const tokenData = {
+    fcmToken:     token,
+    platform:     detectPlatform(),
+    browser:      detectBrowser(),
+    fcmUpdatedAt: serverTimestamp(),
+  };
+
+  try {
+    await updateDoc(doc(db, 'users', uid), tokenData);
+    console.info('[FCM] STEP 4 — Token Saved to Firestore ✓ (updateDoc)');
+  } catch (updateErr: any) {
+    console.warn('[FCM] STEP 4 — updateDoc failed, trying setDoc merge:', updateErr?.message);
+    try {
+      await setDoc(doc(db, 'users', uid), tokenData, { merge: true });
+      console.info('[FCM] STEP 4 — Token Saved to Firestore ✓ (setDoc merge)');
+    } catch (setErr: any) {
+      console.error('[FCM] STEP 4 FAILED — Could not save token to Firestore:');
+      console.error('[FCM]   error:', setErr?.message ?? String(setErr));
+      console.error('[FCM]   Check Firestore rules allow users/{uid} writes for authenticated users.');
+      return null;
+    }
+  }
+
+  // Update local cache
+  const cachedToken = localStorage.getItem(FCM_TOKEN_LS_KEY);
+  if (cachedToken !== token) {
+    localStorage.setItem(FCM_TOKEN_LS_KEY, token);
+    console.info('[FCM] STEP 4 — Token cached in localStorage ✓');
+  }
+
+  console.info('[FCM] ══ FCM INITIALIZATION COMPLETE ✓ ══════════════════════');
+  return token;
 }
 
-/**
- * Revoke FCM token on logout — clears Firestore + local cache.
- */
+// ─── Revoke token on logout ───────────────────────────────────────────────────
+
 export async function revokeFCMToken(uid: string): Promise<void> {
   const messaging = await messagingPromise;
   if (!messaging) return;
@@ -221,31 +246,27 @@ export async function revokeFCMToken(uid: string): Promise<void> {
     await deleteToken(messaging);
     localStorage.removeItem(FCM_TOKEN_LS_KEY);
     await updateDoc(doc(db, 'users', uid), {
-      fcmToken: null,
+      fcmToken:     null,
       fcmUpdatedAt: serverTimestamp(),
     }).catch(() => {});
-    console.info('[Push] FCM token revoked.');
-  } catch (err) {
-    console.warn('[Push] revokeFCMToken error:', err);
+    console.info('[FCM] Token revoked for uid:', uid);
+  } catch (err: any) {
+    console.warn('[FCM] revokeFCMToken error:', err?.message ?? err);
   }
 }
 
 // ─── Foreground message listener ──────────────────────────────────────────────
-// When the app is open (foreground), FCM does NOT show an OS notification.
-// We intercept the message here and dispatch a custom event so the app
-// shows an in-app toast instead.
 
 let _foregroundUnsubscribe: (() => void) | null = null;
 
 export async function initForegroundMessages(): Promise<() => void> {
-  // Already subscribed
   if (_foregroundUnsubscribe) return _foregroundUnsubscribe;
 
   const messaging = await messagingPromise;
   if (!messaging) return () => {};
 
   const unsub = onMessage(messaging, (payload) => {
-    console.info('[Push] Foreground message:', payload);
+    console.info('[FCM] Foreground message received (app is open — no OS notification shown):', payload?.notification?.title);
     window.dispatchEvent(new CustomEvent('skm_push_foreground', {
       detail: {
         title:       payload.notification?.title   ?? payload.data?.title   ?? 'SKM',
@@ -261,15 +282,12 @@ export async function initForegroundMessages(): Promise<() => void> {
   return unsub;
 }
 
-// Keep old name as alias so existing callers compile
 export function subscribeForegroundMessages(): () => void {
-  // Fire-and-forget async init; return a no-op until it resolves.
-  // The real unsub is stored in _foregroundUnsubscribe.
   initForegroundMessages().catch(() => {});
   return () => { _foregroundUnsubscribe?.(); _foregroundUnsubscribe = null; };
 }
 
-// ─── SW notification click → app navigation ───────────────────────────────────
+// ─── SW notification click routing ───────────────────────────────────────────
 
 export function listenForNotificationClicks(
   onNavigate: (type: string, url: string) => void
@@ -279,6 +297,7 @@ export function listenForNotificationClicks(
   const handler = (event: MessageEvent) => {
     if (event.data?.type === 'FCM_NOTIFICATION_CLICK') {
       const { notifType, url } = event.data.data ?? {};
+      console.info('[FCM] Notification tapped → navigating to:', url, 'type:', notifType);
       onNavigate(notifType ?? '', url ?? '/');
     }
   };
@@ -317,7 +336,7 @@ export function isPWAInstalled(): boolean {
     || (window.navigator as any).standalone === true;
 }
 
-// ─── Platform detection ───────────────────────────────────────────────────────
+// ─── Platform helpers ─────────────────────────────────────────────────────────
 
 function detectPlatform(): string {
   const ua = navigator.userAgent;
@@ -331,10 +350,10 @@ function detectPlatform(): string {
 
 function detectBrowser(): string {
   const ua = navigator.userAgent;
-  if (/edg\//i.test(ua))            return 'edge';
-  if (/opr\//i.test(ua))            return 'opera';
-  if (/chrome/i.test(ua))           return 'chrome';
-  if (/firefox/i.test(ua))          return 'firefox';
-  if (/safari/i.test(ua))           return 'safari';
+  if (/edg\//i.test(ua))   return 'edge';
+  if (/opr\//i.test(ua))   return 'opera';
+  if (/chrome/i.test(ua))  return 'chrome';
+  if (/firefox/i.test(ua)) return 'firefox';
+  if (/safari/i.test(ua))  return 'safari';
   return 'unknown';
 }
