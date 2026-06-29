@@ -215,18 +215,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     try {
       const result = await executeBroadcast(notifyParsed, user.uid);
-      if (result.ok) {
-        setNotifyResult({
-          ok:   true,
-          text: `✓ Sent to ${result.successCount} / ${result.recipientCount} users.${result.failureCount > 0 ? ` (${result.failureCount} failed)` : ''}`,
-        });
+
+      // Debug command — show diagnostic info
+      if (result.debugInfo) {
+        setNotifyResult({ ok: true, text: result.debugInfo });
         setNotifyInput('');
         setNotifyParsed(null);
-        addDebugLog('NOTIFY', `Broadcast sent: "${notifyParsed.message}" → ${result.recipientCount} users`);
-        // Refresh log
+        return;
+      }
+
+      if (result.ok) {
+        const pushLine = result.successCount > 0
+          ? `✓ Push delivered: ${result.successCount} devices.`
+          : result.failureCount > 0
+            ? `⚠ Push attempted but ${result.failureCount} failed. Check VITE_FCM_SERVER_KEY.`
+            : `✓ Queued for ${result.recipientCount} devices.`;
+        const extraErr = result.error ? `\n${result.error}` : '';
+        setNotifyResult({ ok: result.successCount > 0, text: pushLine + extraErr });
+        setNotifyInput('');
+        setNotifyParsed(null);
+        addDebugLog('NOTIFY', `Broadcast: push=${result.successCount} tokens=${result.recipientCount} msg="${notifyParsed.message}"`);
         fetchBroadcastLogs(15).then(setNotifyLogs).catch(() => {});
       } else {
-        setNotifyResult({ ok: false, text: `✗ Failed: ${result.error ?? 'Unknown error'}` });
+        setNotifyResult({ ok: false, text: `✗ ${result.error ?? 'Unknown error'}` });
         addDebugLog('NOTIFY', `Broadcast failed: ${result.error}`);
       }
     } catch (err: any) {
@@ -2325,11 +2336,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     {/* Result banner */}
                     {notifyResult && (
-                      <div className="px-3 py-2 rounded-lg text-[9px] font-mono font-black"
+                      <div className="px-3 py-2 rounded-lg text-[9px] font-mono"
                         style={{
-                          background: notifyResult.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                          background: notifyResult.ok ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.08)',
                           border: `1px solid ${notifyResult.ok ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
                           color:  notifyResult.ok ? '#86efac' : '#fca5a5',
+                          whiteSpace: 'pre-line',
+                          lineHeight: '1.6',
                         }}>
                         {notifyResult.text}
                       </div>
@@ -2340,7 +2353,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="space-y-1.5">
                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest font-mono">Command Reference</p>
                     {[
-                      { cmd: 'notify: <message>',              desc: 'Broadcast to all users' },
+                      { cmd: 'debug tokens',                    desc: 'Show token count — run this first to diagnose' },
+                      { cmd: 'notify: <message>',               desc: 'Broadcast to all users' },
                       { cmd: 'notify game: <message>',          desc: 'Game players only' },
                       { cmd: 'notify protein: <message>',       desc: 'Protein tracker users only' },
                       { cmd: 'notify uid:<uid> <message>',      desc: 'One specific user by UID' },
@@ -2348,7 +2362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     ].map(({ cmd, desc }) => (
                       <button
                         key={cmd}
-                        onClick={() => { setNotifyInput(cmd.replace('<message>', 'Hello!').replace('<uid>', 'USER_UID').replace('<topic>', 'golden').replace('<message>', 'Hello!')); notifyInputRef.current?.focus(); }}
+                        onClick={() => { setNotifyInput(cmd.replace('<message>', 'Hello!').replace('<uid>', 'USER_UID').replace('<topic>', 'golden')); notifyInputRef.current?.focus(); }}
                         className="w-full text-left px-3 py-2 rounded-lg transition cursor-pointer"
                         style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
                         onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(234,88,12,0.3)')}
