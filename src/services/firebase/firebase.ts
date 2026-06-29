@@ -18,6 +18,7 @@ import {
   connectFirestoreEmulator,
 } from 'firebase/firestore';
 import { getAnalytics, Analytics, isSupported } from 'firebase/analytics';
+import { getMessaging, Messaging, isSupported as isMessagingSupported } from 'firebase/messaging';
 
 // ─────────────────────────────────────────────
 // Firebase project config (populated from .env)
@@ -56,6 +57,18 @@ isSupported().then((supported) => {
   // Analytics not supported — silently skip
 });
 export { analytics };
+
+// Firebase Cloud Messaging (only in browsers that support service workers)
+let messaging: Messaging | null = null;
+isMessagingSupported().then((supported) => {
+  if (supported) {
+    messaging = getMessaging(app);
+  }
+}).catch(() => {
+  // FCM not supported (e.g. Safari without push support) — silently skip
+});
+export { messaging };
+export { isMessagingSupported };
 
 // ─────────────────────────────────────────────
 // Emulator support for local development

@@ -39,10 +39,36 @@ service cloud.firestore {
                     && request.resource.data.playerName is string
                     && request.resource.data.playerName.size() >= 2
                     && request.resource.data.playerName.size() <= 30;
-      // Owner updates own fields; developer may set role field on any user
+      // Owner updates own fields (including fcmToken, platform, browser for push);
+      // developer may set role field on any user
       allow update: if isOwner(uid)
                     || (isDeveloper() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','updatedAt']));
       allow delete: if false;
+    }
+
+    // ── NOTIFICATION COLLECTIONS ─────────────────────────────
+    // notifications/{notifId} — user can only read their own; only Cloud Functions write
+    // (Cloud Functions use Admin SDK which bypasses security rules entirely)
+    match /notifications/{notifId} {
+      allow read:   if isAuth() && (resource == null || resource.data.userId == request.auth.uid || isDeveloper());
+      // Clients may write their own notifications (e.g. reminder creation from client)
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      // Only the owner can mark as read or delete their own notification
+      allow update: if isOwner(resource.data.userId)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isOwner(resource.data.userId) || isDeveloper();
+    }
+
+    // Notification settings per user — owner read/write only
+    match /notification_settings/{uid} {
+      allow read:  if isOwner(uid) || isDeveloper();
+      allow write: if isOwner(uid);
+    }
+
+    // Reminder state per user — owner read/write only
+    match /reminder_state/{uid} {
+      allow read:  if isOwner(uid) || isDeveloper();
+      allow write: if isOwner(uid);
     }
 
     match /leaderboard/{uid} {

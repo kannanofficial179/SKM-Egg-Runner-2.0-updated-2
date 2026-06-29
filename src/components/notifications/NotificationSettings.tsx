@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import {
-  Bell, Egg, Flame, Trophy, Crown, Megaphone, Zap, Calendar, Target
+  Bell, Egg, Flame, Trophy, Crown, Megaphone, Zap, Calendar, Target, Smartphone
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
 import type { NotificationSettings as NS } from '../../types/notifications';
@@ -61,7 +61,7 @@ function ToggleRow({ icon, label, description, value, onChange }: ToggleRowProps
 }
 
 export default function NotificationSettings() {
-  const { settings, updateSettings } = useNotifications();
+  const { settings, updateSettings, pushPermission, pushEnabled, enablePush, disablePush } = useNotifications();
   const [saving, setSaving] = useState(false);
 
   const update = async (key: keyof NS, val: boolean) => {
@@ -121,6 +121,13 @@ export default function NotificationSettings() {
     },
   ];
 
+  const pushLabel = pushPermission === 'unsupported'
+    ? 'Not supported on this browser'
+    : pushPermission === 'denied'
+    ? 'Blocked — enable in browser settings'
+    : pushEnabled ? 'Android & web push active'
+    : 'Tap to enable push notifications';
+
   return (
     <div style={{
       background: '#fff', borderRadius: 16,
@@ -137,6 +144,18 @@ export default function NotificationSettings() {
         )}
       </div>
 
+      {/* Push notifications master toggle */}
+      <ToggleRow
+        icon={<Smartphone size={17} color={pushEnabled ? '#D71920' : '#bbb'} />}
+        label="Push Notifications"
+        description={pushLabel}
+        value={pushEnabled && pushPermission === 'granted'}
+        onChange={async (val) => {
+          if (val) await enablePush();
+          else     await disablePush();
+        }}
+      />
+
       {rows.map(row => (
         <ToggleRow
           key={row.key}
@@ -147,6 +166,17 @@ export default function NotificationSettings() {
           onChange={val => update(row.key, val)}
         />
       ))}
+
+      {pushPermission === 'denied' && (
+        <div style={{
+          margin: '8px 0', padding: '10px 12px', borderRadius: 10,
+          background: '#FFF7ED', border: '1px solid #FED7AA',
+        }}>
+          <p style={{ margin: 0, fontSize: 11, color: '#9A3412', lineHeight: 1.5 }}>
+            Push notifications are blocked. To enable: tap the lock icon in your browser's address bar → Notifications → Allow.
+          </p>
+        </div>
+      )}
 
       <p style={{
         margin: '12px 0 8px', fontSize: 10, color: '#bbb', textAlign: 'center',
