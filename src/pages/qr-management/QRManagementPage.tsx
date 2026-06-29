@@ -3,7 +3,7 @@ import { soundManager } from '../../audio';
 import {
   QrCode, RefreshCw, ArrowLeft,
   LayoutDashboard, Plus, Search, Layers3,
-  BarChart3, Activity, Printer, Trash2, Settings, Menu, ScanSearch, Bell,
+  BarChart3, Activity, Printer, Trash2, Settings, Menu, ScanSearch,
 } from 'lucide-react';
 import { subscribeDashboardStats, fetchAllQRCodes, EMPTY_STATS, subscribeProteinScansToday } from '../../services/qr/qrManagementService';
 import type { QRDashboardStats, QRCodeRecord } from '../../types/qr/qrManagementTypes';
@@ -17,28 +17,27 @@ import QRAnalytics     from '../../components/qr-management/QRAnalytics';
 import QROperationLogs from '../../components/qr-management/QROperationLogs';
 import QRPrintCenter   from '../../components/qr-management/QRPrintCenter';
 import QRSettings      from '../../components/qr-management/QRSettings';
-import QRTracker      from '../../components/qr-management/QRTracker';
-import AdminNotificationManager from '../../components/notifications/AdminNotificationManager';
+import QRTracker       from '../../components/qr-management/QRTracker';
 
 const RED = '#D71920';
 
-const SIDEBAR_EXPANDED_W = 260;
+const SIDEBAR_EXPANDED_W  = 260;
 const SIDEBAR_COLLAPSED_W = 72;
-const SIDEBAR_MOBILE_W = 280;
-const TOPBAR_H = 56;
-const STORAGE_KEY = 'qr_sidebar_collapsed';
+const SIDEBAR_MOBILE_W    = 280;
+const TOPBAR_H            = 56;
+const STORAGE_KEY         = 'qr_sidebar_collapsed';
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
 type TabId =
   | 'dashboard' | 'generator' | 'search'
-  | 'bulk'      | 'analytics' | 'tracker'  | 'activity' | 'print'
-  | 'delete'    | 'settings'  | 'notifications';
+  | 'bulk'      | 'analytics' | 'tracker' | 'activity' | 'print'
+  | 'delete'    | 'settings';
 
 interface Tab {
-  id:    TabId;
-  label: string;
-  icon:  React.ReactNode;
+  id:     TabId;
+  label:  string;
+  icon:   React.ReactNode;
   badge?: string;
 }
 
@@ -51,23 +50,21 @@ const TABS: Tab[] = [
   { id: 'tracker',   label: 'QR Tracker',   icon: <ScanSearch      size={17} strokeWidth={2} /> },
   { id: 'activity',  label: 'Activity',     icon: <Activity        size={17} strokeWidth={2} /> },
   { id: 'print',     label: 'Print',        icon: <Printer         size={17} strokeWidth={2} /> },
-  { id: 'delete',        label: 'Delete',        icon: <Trash2   size={17} strokeWidth={2} />, badge: 'danger' },
-  { id: 'settings',      label: 'Settings',      icon: <Settings size={17} strokeWidth={2} /> },
-  { id: 'notifications', label: 'Notifications', icon: <Bell     size={17} strokeWidth={2} /> },
+  { id: 'delete',    label: 'Delete',       icon: <Trash2          size={17} strokeWidth={2} />, badge: 'danger' },
+  { id: 'settings',  label: 'Settings',     icon: <Settings        size={17} strokeWidth={2} /> },
 ];
 
 const TAB_TITLES: Record<TabId, { title: string; subtitle: string }> = {
-  dashboard: { title: 'Dashboard',    subtitle: 'Live system overview and QR statistics' },
-  generator: { title: 'QR Generator', subtitle: 'Create single, bulk, or Golden QR codes' },
-  search:    { title: 'QR Search',    subtitle: 'Find and manage individual QR codes' },
-  bulk:      { title: 'Bulk Actions', subtitle: 'Large-scale QR operations and data export' },
-  analytics: { title: 'Analytics',    subtitle: 'Scan trends, usage rates and performance reports' },
-  tracker:   { title: 'QR Tracker',   subtitle: 'Full lifecycle tracking and per-QR inspection' },
-  activity:  { title: 'Activity Logs',subtitle: 'Complete audit trail of all admin operations' },
-  print:     { title: 'Print Center', subtitle: 'Generate A4 PDF print sheets for packaging' },
-  delete:        { title: 'Delete Center',        subtitle: 'Safe, filtered deletion of QR codes' },
-  settings:      { title: 'Settings',             subtitle: 'System configuration and validation rules' },
-  notifications: { title: 'Notification Manager', subtitle: 'Send and schedule notifications to users' },
+  dashboard: { title: 'Dashboard',     subtitle: 'Live system overview and QR statistics' },
+  generator: { title: 'QR Generator',  subtitle: 'Create single, bulk, or Golden QR codes' },
+  search:    { title: 'QR Search',     subtitle: 'Find and manage individual QR codes' },
+  bulk:      { title: 'Bulk Actions',  subtitle: 'Large-scale QR operations and data export' },
+  analytics: { title: 'Analytics',     subtitle: 'Scan trends, usage rates and performance reports' },
+  tracker:   { title: 'QR Tracker',    subtitle: 'Full lifecycle tracking and per-QR inspection' },
+  activity:  { title: 'Activity Logs', subtitle: 'Complete audit trail of all admin operations' },
+  print:     { title: 'Print Center',  subtitle: 'Generate A4 PDF print sheets for packaging' },
+  delete:    { title: 'Delete Center', subtitle: 'Safe, filtered deletion of QR codes' },
+  settings:  { title: 'Settings',      subtitle: 'System configuration and validation rules' },
 };
 
 // ─── Detect mobile (≤ 768 px) ────────────────────────────────────────────────
@@ -83,16 +80,16 @@ function useIsMobile() {
   return mobile;
 }
 
-// ─── Tab pill — expanded (icon + label) ──────────────────────────────────────
+// ─── Tab pill ─────────────────────────────────────────────────────────────────
 
 function TabPill({
   tab, active, collapsed, onClick,
 }: {
   tab: Tab; active: boolean; collapsed: boolean; onClick: () => void;
 }) {
-  const isDanger = tab.badge === 'danger';
+  const isDanger    = tab.badge === 'danger';
   const activeColor = isDanger ? '#DC2626' : RED;
-  const iconColor = active ? activeColor : isDanger ? '#EF4444' : '#9CA3AF';
+  const iconColor   = active ? activeColor : isDanger ? '#EF4444' : '#9CA3AF';
 
   return (
     <button
@@ -124,12 +121,10 @@ function TabPill({
         whiteSpace: 'nowrap',
       }}
     >
-      {/* Active indicator bar for collapsed mode */}
       {collapsed && active && (
         <span style={{
           position: 'absolute', left: 0, top: '20%', bottom: '20%',
-          width: 3, borderRadius: 2,
-          background: activeColor,
+          width: 3, borderRadius: 2, background: activeColor,
         }} />
       )}
       <span style={{ color: iconColor, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
@@ -147,46 +142,38 @@ function TabPill({
 interface Props { onBack: () => void; }
 
 export default function QRManagementPage({ onBack }: Props) {
-  const { user } = useAuth();
-  const actor = user?.email ?? user?.displayName ?? 'Admin';
-  const isMobile = useIsMobile();
+  const { user }  = useAuth();
+  const actor     = user?.email ?? user?.displayName ?? 'Admin';
+  const isMobile  = useIsMobile();
 
-  const [activeTab,          setActiveTab]          = useState<TabId>('dashboard');
-  const [stats,              setStats]              = useState<QRDashboardStats>(EMPTY_STATS);
-  const [codes,              setCodes]              = useState<QRCodeRecord[]>([]);
-  const [loadingStats,       setLoadingStats]       = useState(true);
-  const [statsError,         setStatsError]         = useState<string | null>(null);
-  const [refreshKey,         setRefreshKey]         = useState(0);
-  const [proteinScansToday,  setProteinScansToday]  = useState(0);
+  const [activeTab,         setActiveTab]         = useState<TabId>('dashboard');
+  const [stats,             setStats]             = useState<QRDashboardStats>(EMPTY_STATS);
+  const [codes,             setCodes]             = useState<QRCodeRecord[]>([]);
+  const [loadingStats,      setLoadingStats]      = useState(true);
+  const [statsError,        setStatsError]        = useState<string | null>(null);
+  const [refreshKey,        setRefreshKey]        = useState(0);
+  const [proteinScansToday, setProteinScansToday] = useState(0);
   const unsubRef        = useRef<(() => void) | null>(null);
   const unsubProteinRef = useRef<(() => void) | null>(null);
 
-  // Desktop: collapsed = icon-only. Mobile: open = overlay visible.
   const [desktopCollapsed, setDesktopCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(STORAGE_KEY) === 'true'; } catch { return false; }
   });
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Persist desktop collapse state
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, String(desktopCollapsed)); } catch { /* ignore */ }
   }, [desktopCollapsed]);
 
-  // Close mobile sidebar when resizing to desktop
   useEffect(() => {
     if (!isMobile) setMobileOpen(false);
   }, [isMobile]);
 
-  // Hard mute lock for the entire QR Management session.
   useEffect(() => {
     soundManager.lockAdminMute();
-    return () => {
-      soundManager.unlockAdminMute();
-    };
+    return () => { soundManager.unlockAdminMute(); };
   }, []);
 
-  // Live protein scan count for today — independent of QR stats subscription.
-  // Queries proteinScans documents timestamped within today's calendar day.
   useEffect(() => {
     unsubProteinRef.current?.();
     unsubProteinRef.current = subscribeProteinScansToday((count) => {
@@ -219,22 +206,16 @@ export default function QRManagementPage({ onBack }: Props) {
   };
 
   const toggleSidebar = () => {
-    if (isMobile) {
-      setMobileOpen(v => !v);
-    } else {
-      setDesktopCollapsed(v => !v);
-    }
+    if (isMobile) setMobileOpen(v => !v);
+    else          setDesktopCollapsed(v => !v);
   };
 
   const { title, subtitle } = TAB_TITLES[activeTab];
+  const desktopSidebarW     = desktopCollapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W;
 
-  // ── Computed sidebar width for desktop layout ─────────────────────────────
-  const desktopSidebarW = desktopCollapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W;
-
-  // ── Render active tab content ─────────────────────────────────────────────
   const renderTab = () => {
     switch (activeTab) {
-      case 'dashboard': return <QRDashboard stats={stats} loading={loadingStats} error={statsError} codes={codes} actor={actor} proteinScansToday={proteinScansToday} onNavigate={(tab) => navigate(tab as any)} onRefresh={refresh} />;
+      case 'dashboard': return <QRDashboard stats={stats} loading={loadingStats} error={statsError} codes={codes} actor={actor} proteinScansToday={proteinScansToday} onNavigate={(tab) => navigate(tab as TabId)} onRefresh={refresh} />;
       case 'generator': return <QRGenerator onGenerated={refresh} />;
       case 'search':    return <QRSearch />;
       case 'bulk':      return (
@@ -247,13 +228,8 @@ export default function QRManagementPage({ onBack }: Props) {
       case 'tracker':   return <QRTracker codes={codes} onRefresh={refresh} actor={actor} />;
       case 'activity':  return <QROperationLogs refreshKey={refreshKey} />;
       case 'print':     return <QRPrintCenter codes={codes} actor={actor} />;
-      case 'delete':        return <QRBulkControl onRefresh={refresh} actor={actor} />;
-      case 'settings':      return <QRSettings />;
-      case 'notifications': return (
-        <div style={{ maxWidth: 560, margin: '0 auto' }}>
-          <AdminNotificationManager />
-        </div>
-      );
+      case 'delete':    return <QRBulkControl onRefresh={refresh} actor={actor} />;
+      case 'settings':  return <QRSettings />;
     }
   };
 
@@ -270,10 +246,8 @@ export default function QRManagementPage({ onBack }: Props) {
         height: TOPBAR_H, background: '#FFFFFF', borderBottom: '1px solid #E5E7EB',
         padding: '0 16px', flexShrink: 0,
         display: 'flex', alignItems: 'center', gap: 10,
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06)', zIndex: 20,
-        position: 'relative',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)', zIndex: 20, position: 'relative',
       }}>
-        {/* Back */}
         <button
           onClick={onBack}
           title="Back"
@@ -281,8 +255,7 @@ export default function QRManagementPage({ onBack }: Props) {
             background: '#F3F4F6', border: '1px solid #E5E7EB', color: '#374151',
             borderRadius: 8, width: 32, height: 32,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', flexShrink: 0,
-            transition: 'background 150ms',
+            cursor: 'pointer', flexShrink: 0, transition: 'background 150ms',
           }}
           onMouseEnter={e => (e.currentTarget.style.background = '#E5E7EB')}
           onMouseLeave={e => (e.currentTarget.style.background = '#F3F4F6')}
@@ -290,7 +263,6 @@ export default function QRManagementPage({ onBack }: Props) {
           <ArrowLeft size={16} strokeWidth={2} />
         </button>
 
-        {/* ☰ Sidebar toggle — always visible, top-left */}
         <button
           onClick={toggleSidebar}
           title={isMobile
@@ -300,8 +272,7 @@ export default function QRManagementPage({ onBack }: Props) {
             background: '#F3F4F6', border: '1px solid #E5E7EB', color: '#374151',
             borderRadius: 8, width: 32, height: 32,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', flexShrink: 0,
-            transition: 'background 150ms, transform 150ms',
+            cursor: 'pointer', flexShrink: 0, transition: 'background 150ms',
           }}
           onMouseEnter={e => (e.currentTarget.style.background = '#E5E7EB')}
           onMouseLeave={e => (e.currentTarget.style.background = '#F3F4F6')}
@@ -309,7 +280,6 @@ export default function QRManagementPage({ onBack }: Props) {
           <Menu size={16} strokeWidth={2} />
         </button>
 
-        {/* Logo mark */}
         <div style={{
           width: 30, height: 30, borderRadius: 8,
           background: `${RED}12`, border: `1px solid ${RED}25`,
@@ -356,24 +326,17 @@ export default function QRManagementPage({ onBack }: Props) {
       {/* ── Body: sidebar + content ── */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
 
-        {/* ══ DESKTOP SIDEBAR ══
-            Sits in normal flow — content area shrinks/grows alongside it.
-            Uses transform for the slide animation, width stays fixed so
-            the flex layout can transition without layout thrashing.         */}
+        {/* ══ DESKTOP SIDEBAR ══ */}
         {!isMobile && (
           <div style={{
-            width: desktopSidebarW,
-            flexShrink: 0,
+            width: desktopSidebarW, flexShrink: 0,
             transition: 'width 250ms ease-in-out',
-            overflow: 'hidden',
-            position: 'relative',
+            overflow: 'hidden', position: 'relative',
           }}>
-            {/* Inner panel — fixed visual width, translated when collapsing */}
             <div style={{
               position: 'absolute', top: 0, left: 0, bottom: 0,
               width: SIDEBAR_EXPANDED_W,
-              background: '#FFFFFF',
-              borderRight: '1px solid #E5E7EB',
+              background: '#FFFFFF', borderRight: '1px solid #E5E7EB',
               display: 'flex', flexDirection: 'column',
               overflowY: 'auto', overflowX: 'hidden',
               boxShadow: '1px 0 4px rgba(0,0,0,0.04)',
@@ -382,17 +345,15 @@ export default function QRManagementPage({ onBack }: Props) {
                 : 'translateX(0)',
               transition: 'transform 250ms ease-in-out',
             }}>
-              {/* Section label — only shown when expanded */}
               <div style={{
                 padding: '14px 14px 6px',
                 opacity: desktopCollapsed ? 0 : 1,
                 transition: 'opacity 200ms ease-in-out',
                 pointerEvents: desktopCollapsed ? 'none' : 'auto',
               }}>
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: 2,
-                  textTransform: 'uppercase', color: '#9CA3AF',
-                }}>Navigation</span>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: '#9CA3AF' }}>
+                  Navigation
+                </span>
               </div>
 
               <div style={{ padding: desktopCollapsed ? '8px 4px' : '4px 10px', flex: 1 }}>
@@ -407,13 +368,10 @@ export default function QRManagementPage({ onBack }: Props) {
                 ))}
               </div>
 
-              {/* Collapse hint at bottom when expanded */}
               {!desktopCollapsed && (
                 <div style={{
-                  padding: '10px 14px 14px',
-                  borderTop: '1px solid #F3F4F6',
-                  fontSize: 10, color: '#C4C9D4', fontWeight: 500,
-                  textAlign: 'center',
+                  padding: '10px 14px 14px', borderTop: '1px solid #F3F4F6',
+                  fontSize: 10, color: '#C4C9D4', fontWeight: 500, textAlign: 'center',
                 }}>
                   ☰ to collapse
                 </div>
@@ -422,11 +380,9 @@ export default function QRManagementPage({ onBack }: Props) {
           </div>
         )}
 
-        {/* ══ MOBILE SIDEBAR OVERLAY ══
-            Absolutely positioned, slides in from left over content.         */}
+        {/* ══ MOBILE SIDEBAR OVERLAY ══ */}
         {isMobile && (
           <>
-            {/* Backdrop */}
             <div
               onClick={() => setMobileOpen(false)}
               style={{
@@ -437,25 +393,19 @@ export default function QRManagementPage({ onBack }: Props) {
                 transition: 'opacity 250ms ease-in-out',
               }}
             />
-
-            {/* Sidebar panel */}
             <div style={{
               position: 'absolute', top: 0, left: 0, bottom: 0,
-              width: SIDEBAR_MOBILE_W,
-              background: '#FFFFFF',
-              borderRight: '1px solid #E5E7EB',
-              zIndex: 16,
-              display: 'flex', flexDirection: 'column',
-              overflowY: 'auto',
+              width: SIDEBAR_MOBILE_W, background: '#FFFFFF',
+              borderRight: '1px solid #E5E7EB', zIndex: 16,
+              display: 'flex', flexDirection: 'column', overflowY: 'auto',
               boxShadow: mobileOpen ? '4px 0 24px rgba(0,0,0,0.14)' : 'none',
               transform: mobileOpen ? 'translateX(0)' : `translateX(-${SIDEBAR_MOBILE_W + 8}px)`,
               transition: 'transform 250ms ease-in-out, box-shadow 250ms ease-in-out',
             }}>
               <div style={{ padding: '14px 14px 6px' }}>
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: 2,
-                  textTransform: 'uppercase', color: '#9CA3AF',
-                }}>Navigation</span>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: '#9CA3AF' }}>
+                  Navigation
+                </span>
               </div>
               <div style={{ padding: '4px 10px', flex: 1 }}>
                 {TABS.map(tab => (
@@ -482,7 +432,6 @@ export default function QRManagementPage({ onBack }: Props) {
                 <h2 style={{ fontSize: 18, fontWeight: 900, color: '#1A1A1A', margin: 0, letterSpacing: '-0.3px' }}>{title}</h2>
                 <p style={{ fontSize: 12, color: '#9CA3AF', margin: '2px 0 0', fontWeight: 500 }}>{subtitle}</p>
               </div>
-              {/* Quick-jump chips */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {activeTab !== 'dashboard' && (
                   <button
@@ -502,8 +451,6 @@ export default function QRManagementPage({ onBack }: Props) {
                 )}
               </div>
             </div>
-
-            {/* Breadcrumb divider */}
             <div style={{ height: 1, background: '#E5E7EB', margin: '14px 0 0' }} />
           </div>
 
@@ -514,9 +461,7 @@ export default function QRManagementPage({ onBack }: Props) {
         </div>
       </div>
 
-      <style>{`
-        @keyframes qrSpin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`@keyframes qrSpin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
