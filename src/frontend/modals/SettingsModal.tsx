@@ -40,6 +40,14 @@ import {
   DebugLogEntry
 } from '../../liveConfig';
 import { runDevQuery, runDailySummary, checkDevPermissions, DevAnswer, DevCard, QUICK_COMMANDS } from '../../services/dev/devAssistantService';
+import {
+  parseNotifyCommand,
+  executeBroadcast,
+  fetchBroadcastLogs,
+  type BroadcastLogEntry,
+  type ParsedNotifyCommand,
+} from '../../services/notifications/adminBroadcastService';
+import { useAuth } from '../../auth/AuthProvider';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -66,7 +74,7 @@ const ENCODED_DEV_NAME = "REVWRUxPUEVS"; // base64 for "DEVELOPER"
 const ENCODED_DEV_PASS = "bnBtIHJ1biBkZXY="; // base64 for "npm run dev"
 
 type SettingsView = 'SETTINGS' | 'DEV_LOGIN' | 'DEV_PANEL';
-type DevTab = 'BALANCING' | 'DIAGNOSTICS' | 'TESTING' | 'LOGS' | 'DEV_AI';
+type DevTab = 'BALANCING' | 'DIAGNOSTICS' | 'TESTING' | 'LOGS' | 'DEV_AI' | 'NOTIFY';
 
 interface ChatMessage {
   role: 'user' | 'dev';
@@ -95,6 +103,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   fps = 60,
   onNavigateQR,
 }) => {
+  const { user } = useAuth();
   const [view, setView] = useState<SettingsView>(initialView);
   const [activeTab, setActiveTab] = useState<DevTab>('BALANCING');
 
@@ -159,6 +168,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [chatInput,     setChatInput]     = useState('');
   const [chatLoading,   setChatLoading]   = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // ── NOTIFY tab state ─────────────────────────────────────────────────────────
+  const [notifyInput,     setNotifyInput]     = useState('');
+  const [notifyParsed,    setNotifyParsed]    = useState<ParsedNotifyCommand | null>(null);
+  const [notifyParseErr,  setNotifyParseErr]  = useState('');
+  const [notifySending,   setNotifySending]   = useState(false);
+  const [notifyResult,    setNotifyResult]    = useState<{ ok: boolean; text: string } | null>(null);
+  const [notifyLogs,      setNotifyLogs]      = useState<BroadcastLogEntry[]>([]);
+  const [notifyLogsLoading, setNotifyLogsLoading] = useState(false);
+  const notifyInputRef = useRef<HTMLInputElement>(null);
+
+  // Load broadcast log when NOTIFY tab opens
+  useEffect(() => {
+    if (activeTab !== 'NOTIFY') return;
+    setNotifyLogsLoading(true);
+    fetchBroadcastLogs(15)
+      .then(logs => setNotifyLogs(logs))
+      .catch(() => {})
+      .finally(() => setNotifyLogsLoading(false));
+  }, [activeTab]);
+
+  // Live-parse notify input as user types
+  useEffect(() => {
+    if (!notifyInput.trim()) {
+      setNotifyParsed(null);
+      setNotifyParseErr('');
+      return;
+    }
+    const parsed = parseNotifyCommand(notifyInput);
+    if (parsed) {
+      setNotifyParsed(parsed);
+      setNotifyParseErr('');
+    } else {
+      setNotifyParsed(null);
+      setNotifyParseErr('Unknown command syntax. See examples below.');
+    }
+  }, [notifyInput]);
+
+  const handleNotifyExecute = async () => {
+    if (!notifyParsed || notifySending) return;
+    if (!user?.uid) { setNotifyResult({ ok: false, text: 'Not authenticated.' }); return; }
+
+    setNotifySending(true);
+    setNotifyResult(null);
+
+    try {
+      const result = await executeBroadcast(notifyParsed, user.uid);
+      if (result.ok) {
+        setNotifyResult({
+          ok:   true,
+          text: `✓ Sent to ${result.successCount} / ${result.recipientCount} users.${result.failureCount > 0 ? ` (${result.failureCount} failed)` : ''}`,
+        });
+        setNotifyInput('');
+        setNotifyParsed(null);
+        addDebugLog('NOTIFY', `Broadcast sent: "${notifyParsed.message}" → ${result.recipientCount} users`);
+        // Refresh log
+        fetchBroadcastLogs(15).then(setNotifyLogs).catch(() => {});
+      } else {
+        setNotifyResult({ ok: false, text: `✗ Failed: ${result.error ?? 'Unknown error'}` });
+        addDebugLog('NOTIFY', `Broadcast failed: ${result.error}`);
+      }
+    } catch (err: any) {
+      setNotifyResult({ ok: false, text: `✗ Error: ${err?.message ?? err}` });
+    } finally {
+      setNotifySending(false);
+    }
+  };
 
   // Custom status feedback notice toast
   const [noticeToast, setNoticeToast] = useState<string | null>(null);
@@ -1198,6 +1274,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <Sparkles className="w-3.5 h-3.5" />
                 DEV
               </button>
+              <button
+                onClick={() => { soundManager.playClick(); setActiveTab('NOTIFY'); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  activeTab === 'NOTIFY'
+                    ? 'bg-orange-950/60 border-orange-500 text-orange-300'
+                    : 'bg-slate-950/20 border-slate-850 hover:border-orange-900 text-slate-400 hover:text-orange-300'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5" />
+                NOTIFY
+              </button>
             </div>
 
             {/* TAB SYSTEM BODY (SCROLLABLE CONTAINER) */}
@@ -2150,6 +2237,172 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       {chatLoading ? '...' : 'Run'}
                     </button>
                   </form>
+
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────────────────
+                  TAB 6 — NOTIFY: Admin Broadcast Command Terminal
+              ─────────────────────────────────────────────────────────────── */}
+              {activeTab === 'NOTIFY' && (
+                <div className="space-y-4">
+
+                  {/* Header */}
+                  <div className="p-3 rounded-xl border space-y-1"
+                    style={{ background: 'rgba(234,88,12,0.08)', borderColor: 'rgba(234,88,12,0.25)' }}>
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-3.5 h-3.5 text-orange-400" />
+                      <h4 className="text-[10px] font-black text-orange-400 uppercase tracking-widest font-mono">
+                        BROADCAST COMMAND TERMINAL
+                      </h4>
+                    </div>
+                    <p className="text-[9px] text-slate-400 font-mono leading-relaxed">
+                      Type a notify command below. The notification is dispatched via Firebase Cloud Messaging to every registered device in real time.
+                    </p>
+                  </div>
+
+                  {/* Command input */}
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-orange-400 uppercase tracking-widest font-mono">
+                      Command
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        ref={notifyInputRef}
+                        type="text"
+                        value={notifyInput}
+                        onChange={e => { setNotifyInput(e.target.value); setNotifyResult(null); }}
+                        onKeyDown={e => { if (e.key === 'Enter' && notifyParsed && !notifySending) handleNotifyExecute(); }}
+                        placeholder='notify: Hello everyone'
+                        className="flex-1 bg-slate-950 border text-white font-mono text-[10px] px-3 py-2 rounded-xl focus:outline-none transition"
+                        style={{
+                          borderColor: notifyParseErr && notifyInput
+                            ? 'rgba(239,68,68,0.6)'
+                            : notifyParsed
+                            ? 'rgba(234,88,12,0.7)'
+                            : 'rgba(100,116,139,0.4)',
+                        }}
+                        disabled={notifySending}
+                      />
+                      <button
+                        onClick={handleNotifyExecute}
+                        disabled={!notifyParsed || notifySending}
+                        className="px-4 py-2 rounded-xl font-black text-[10px] uppercase font-mono transition active:scale-95 disabled:opacity-40 cursor-pointer shrink-0"
+                        style={{ background: 'linear-gradient(135deg,#EA580C,#9A3412)', color: 'white', minWidth: 60 }}
+                      >
+                        {notifySending ? (
+                          <span className="flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 border border-white/30 border-t-white rounded-full animate-spin inline-block" />
+                            <span>Sending</span>
+                          </span>
+                        ) : 'SEND'}
+                      </button>
+                    </div>
+
+                    {/* Live parse preview */}
+                    {notifyInput && !notifyParseErr && notifyParsed && (
+                      <div className="px-3 py-2 rounded-lg text-[9px] font-mono space-y-0.5"
+                        style={{ background: 'rgba(234,88,12,0.07)', border: '1px solid rgba(234,88,12,0.2)' }}>
+                        <div className="flex gap-3">
+                          <span className="text-slate-500">TARGET</span>
+                          <span className="text-orange-300 font-black">
+                            {notifyParsed.target.kind === 'all'     && 'All Users'}
+                            {notifyParsed.target.kind === 'game'    && 'Game Players Only'}
+                            {notifyParsed.target.kind === 'protein' && 'Protein Tracker Users Only'}
+                            {notifyParsed.target.kind === 'uid'     && `User: ${notifyParsed.target.uid}`}
+                            {notifyParsed.target.kind === 'topic'   && `Topic: ${notifyParsed.target.topic}`}
+                          </span>
+                        </div>
+                        <div className="flex gap-3">
+                          <span className="text-slate-500">MSG</span>
+                          <span className="text-white">{notifyParsed.message}</span>
+                        </div>
+                      </div>
+                    )}
+                    {notifyInput && notifyParseErr && (
+                      <p className="text-[9px] font-mono text-red-400 px-1">{notifyParseErr}</p>
+                    )}
+
+                    {/* Result banner */}
+                    {notifyResult && (
+                      <div className="px-3 py-2 rounded-lg text-[9px] font-mono font-black"
+                        style={{
+                          background: notifyResult.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                          border: `1px solid ${notifyResult.ok ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                          color:  notifyResult.ok ? '#86efac' : '#fca5a5',
+                        }}>
+                        {notifyResult.text}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Syntax reference */}
+                  <div className="space-y-1.5">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest font-mono">Command Reference</p>
+                    {[
+                      { cmd: 'notify: <message>',              desc: 'Broadcast to all users' },
+                      { cmd: 'notify game: <message>',          desc: 'Game players only' },
+                      { cmd: 'notify protein: <message>',       desc: 'Protein tracker users only' },
+                      { cmd: 'notify uid:<uid> <message>',      desc: 'One specific user by UID' },
+                      { cmd: 'notify topic:<topic> <message>',  desc: 'Named topic group' },
+                    ].map(({ cmd, desc }) => (
+                      <button
+                        key={cmd}
+                        onClick={() => { setNotifyInput(cmd.replace('<message>', 'Hello!').replace('<uid>', 'USER_UID').replace('<topic>', 'golden').replace('<message>', 'Hello!')); notifyInputRef.current?.focus(); }}
+                        className="w-full text-left px-3 py-2 rounded-lg transition cursor-pointer"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(234,88,12,0.3)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}
+                      >
+                        <code className="text-[9px] text-orange-300 font-mono block">{cmd}</code>
+                        <span className="text-[8px] text-slate-500 font-mono">{desc}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Broadcast log */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest font-mono">Broadcast History</p>
+                      <button
+                        onClick={() => { setNotifyLogsLoading(true); fetchBroadcastLogs(15).then(setNotifyLogs).catch(() => {}).finally(() => setNotifyLogsLoading(false)); }}
+                        className="text-[8px] text-slate-500 hover:text-orange-400 font-mono transition cursor-pointer"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+
+                    {notifyLogsLoading && (
+                      <div className="flex items-center gap-2 py-2">
+                        <span className="w-3 h-3 border border-orange-500/30 border-t-orange-400 rounded-full animate-spin" />
+                        <span className="text-[8px] font-mono text-slate-500">Loading…</span>
+                      </div>
+                    )}
+
+                    {!notifyLogsLoading && notifyLogs.length === 0 && (
+                      <p className="text-[8px] font-mono text-slate-600 px-1">No broadcasts sent yet.</p>
+                    )}
+
+                    {notifyLogs.map(log => (
+                      <div key={log.id}
+                        className="px-3 py-2 rounded-lg space-y-1"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div className="flex items-center justify-between">
+                          <code className="text-[8px] text-orange-300 font-mono font-black truncate max-w-[65%]">{log.command}</code>
+                          <span className="text-[7px] font-mono text-slate-600 shrink-0 ml-2">
+                            {log.sentAt instanceof Date ? log.sentAt.toLocaleTimeString() : ''}
+                          </span>
+                        </div>
+                        <p className="text-[8px] font-mono text-slate-400 truncate">{log.message}</p>
+                        <div className="flex gap-3 text-[7px] font-mono">
+                          <span style={{ color: 'rgba(148,163,184,0.5)' }}>→ {log.target}</span>
+                          <span className="text-emerald-500/70">✓ {log.successCount}</span>
+                          {log.failureCount > 0 && <span className="text-red-400/70">✗ {log.failureCount}</span>}
+                          <span style={{ color: 'rgba(148,163,184,0.4)' }}>total: {log.recipientCount}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
                 </div>
               )}

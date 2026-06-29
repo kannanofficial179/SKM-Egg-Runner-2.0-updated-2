@@ -103,7 +103,9 @@ export const onNotificationCreated = onDocumentCreated(
       return;
     }
 
-    const { userId, title, message, type, priority, targetAll, actionUrl, metadata } = data;
+    const { userId, title, message, type, priority, actionUrl, metadata } = data;
+    // targetAll is true either via explicit flag or the __broadcast__ sentinel userId
+    const targetAll = data.targetAll || userId === '__broadcast__';
     const clickAction = clickActionFor(type, actionUrl);
 
     try {

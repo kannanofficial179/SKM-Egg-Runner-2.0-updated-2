@@ -71,6 +71,14 @@ service cloud.firestore {
       allow write: if isOwner(uid);
     }
 
+    // Admin broadcast logs — developer read/write only
+    match /broadcast_logs/{logId} {
+      allow read:   if isDeveloper();
+      allow create: if isDeveloper();
+      allow update: if false;
+      allow delete: if isDeveloper();
+    }
+
     match /leaderboard/{uid} {
       allow read:   if isAuth();
       allow create: if isOwner(uid)
