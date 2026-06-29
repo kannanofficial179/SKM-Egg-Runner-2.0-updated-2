@@ -7,6 +7,7 @@ import ConsumptionScreen from '../protein/ConsumptionScreen';
 import AnalyticsScreen   from '../protein/AnalyticsScreen';
 import ProfileScreen     from '../protein/ProfileScreen';
 import { HomeIcon, CameraIcon, FoodLogIcon, AnalyticsIcon, UserIcon } from '../protein/Icons';
+import NotificationBell from '../components/notifications/NotificationBell';
 
 type Tab = 'dashboard' | 'scan' | 'log' | 'stats' | 'profile';
 
@@ -55,6 +56,7 @@ export default function ProteinTrackerScreen({ onBack }: ProteinTrackerScreenPro
             <span style={{ fontWeight: 900, fontSize: 14, color: '#1A1A1A' }}>Protein</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NotificationBell size={18} />
             <button onClick={() => setTab('scan')} style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 11,
               background: tab === 'scan' ? '#FCE8E8' : '#F5F5F5', border: 'none', cursor: 'pointer',

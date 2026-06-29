@@ -3,7 +3,7 @@ import { soundManager } from '../../audio';
 import {
   QrCode, RefreshCw, ArrowLeft,
   LayoutDashboard, Plus, Search, Layers3,
-  BarChart3, Activity, Printer, Trash2, Settings, Menu, ScanSearch,
+  BarChart3, Activity, Printer, Trash2, Settings, Menu, ScanSearch, Bell,
 } from 'lucide-react';
 import { subscribeDashboardStats, fetchAllQRCodes, EMPTY_STATS, subscribeProteinScansToday } from '../../services/qr/qrManagementService';
 import type { QRDashboardStats, QRCodeRecord } from '../../types/qr/qrManagementTypes';
@@ -18,6 +18,7 @@ import QROperationLogs from '../../components/qr-management/QROperationLogs';
 import QRPrintCenter   from '../../components/qr-management/QRPrintCenter';
 import QRSettings      from '../../components/qr-management/QRSettings';
 import QRTracker      from '../../components/qr-management/QRTracker';
+import AdminNotificationManager from '../../components/notifications/AdminNotificationManager';
 
 const RED = '#D71920';
 
@@ -32,7 +33,7 @@ const STORAGE_KEY = 'qr_sidebar_collapsed';
 type TabId =
   | 'dashboard' | 'generator' | 'search'
   | 'bulk'      | 'analytics' | 'tracker'  | 'activity' | 'print'
-  | 'delete'    | 'settings';
+  | 'delete'    | 'settings'  | 'notifications';
 
 interface Tab {
   id:    TabId;
@@ -50,8 +51,9 @@ const TABS: Tab[] = [
   { id: 'tracker',   label: 'QR Tracker',   icon: <ScanSearch      size={17} strokeWidth={2} /> },
   { id: 'activity',  label: 'Activity',     icon: <Activity        size={17} strokeWidth={2} /> },
   { id: 'print',     label: 'Print',        icon: <Printer         size={17} strokeWidth={2} /> },
-  { id: 'delete',    label: 'Delete',       icon: <Trash2          size={17} strokeWidth={2} />, badge: 'danger' },
-  { id: 'settings',  label: 'Settings',     icon: <Settings        size={17} strokeWidth={2} /> },
+  { id: 'delete',        label: 'Delete',        icon: <Trash2   size={17} strokeWidth={2} />, badge: 'danger' },
+  { id: 'settings',      label: 'Settings',      icon: <Settings size={17} strokeWidth={2} /> },
+  { id: 'notifications', label: 'Notifications', icon: <Bell     size={17} strokeWidth={2} /> },
 ];
 
 const TAB_TITLES: Record<TabId, { title: string; subtitle: string }> = {
@@ -63,8 +65,9 @@ const TAB_TITLES: Record<TabId, { title: string; subtitle: string }> = {
   tracker:   { title: 'QR Tracker',   subtitle: 'Full lifecycle tracking and per-QR inspection' },
   activity:  { title: 'Activity Logs',subtitle: 'Complete audit trail of all admin operations' },
   print:     { title: 'Print Center', subtitle: 'Generate A4 PDF print sheets for packaging' },
-  delete:    { title: 'Delete Center',subtitle: 'Safe, filtered deletion of QR codes' },
-  settings:  { title: 'Settings',     subtitle: 'System configuration and validation rules' },
+  delete:        { title: 'Delete Center',        subtitle: 'Safe, filtered deletion of QR codes' },
+  settings:      { title: 'Settings',             subtitle: 'System configuration and validation rules' },
+  notifications: { title: 'Notification Manager', subtitle: 'Send and schedule notifications to users' },
 };
 
 // ─── Detect mobile (≤ 768 px) ────────────────────────────────────────────────
@@ -244,8 +247,13 @@ export default function QRManagementPage({ onBack }: Props) {
       case 'tracker':   return <QRTracker codes={codes} onRefresh={refresh} actor={actor} />;
       case 'activity':  return <QROperationLogs refreshKey={refreshKey} />;
       case 'print':     return <QRPrintCenter codes={codes} actor={actor} />;
-      case 'delete':    return <QRBulkControl onRefresh={refresh} actor={actor} />;
-      case 'settings':  return <QRSettings />;
+      case 'delete':        return <QRBulkControl onRefresh={refresh} actor={actor} />;
+      case 'settings':      return <QRSettings />;
+      case 'notifications': return (
+        <div style={{ maxWidth: 560, margin: '0 auto' }}>
+          <AdminNotificationManager />
+        </div>
+      );
     }
   };
 

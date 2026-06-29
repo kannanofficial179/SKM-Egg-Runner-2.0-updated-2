@@ -13,6 +13,10 @@ import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './services/firebase/firebase.ts';
 import { startRealtimeConfigSync } from './liveConfig.ts';
 import { soundManager } from './audio.ts';
+import { NotificationProvider } from './context/NotificationContext.tsx';
+import NotificationDrawer from './components/notifications/NotificationDrawer.tsx';
+import InAppToast from './components/notifications/InAppToast.tsx';
+import AchievementPopup from './components/notifications/AchievementPopup.tsx';
 import './index.css';
 
 // Start Firestore real-time config sync as soon as the app loads.
@@ -227,7 +231,13 @@ function OnlineGate() {
 
   return (
     <AuthProvider>
-      <AppRoot />
+      <NotificationProvider>
+        <AppRoot />
+        {/* Global notification overlays — rendered outside any screen so they always appear */}
+        <NotificationDrawer />
+        <InAppToast />
+        <AchievementPopup />
+      </NotificationProvider>
     </AuthProvider>
   );
 }

@@ -11,6 +11,7 @@ import {
   UserIcon, EditIcon, LogoutIcon, TrashIcon, BellIcon, TargetIcon,
   FlameIcon, EggIcon, SettingsIcon, ChevronRightIcon, CheckIcon,
 } from './Icons';
+import NotificationSettings from '../components/notifications/NotificationSettings';
 
 type View = 'profile' | 'edit_profile' | 'edit_goal' | 'delete_confirm';
 
@@ -311,6 +312,12 @@ export default function ProfileScreen({ user, onLogout, onDataDeleted, onBackToM
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
             <ActionRow icon={<EditIcon   size={18} color="#D71920" />} label="Edit Profile"      onClick={() => { setProfile({ playerName, age: String(userDoc.age ?? ''), gender: String(userDoc.gender ?? ''), height: String(userDoc.height ?? ''), weight: String(userDoc.weight ?? ''), goalWeight: String(userDoc.goalWeight ?? ''), phone: String(userDoc.phone ?? '') }); setView('edit_profile'); }} />
             <ActionRow icon={<TargetIcon size={18} color="#D71920" />} label="Change Daily Goal" onClick={() => { setNewGoal(String(settings?.dailyGoal ?? DEFAULT_DAILY_GOAL)); setView('edit_goal'); }} />
+          </div>
+
+          {/* Notification Settings */}
+          <div style={{ marginTop: 14 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, color: '#999', textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px 4px' }}>Notifications</p>
+            <NotificationSettings />
           </div>
 
           {/* Settings */}

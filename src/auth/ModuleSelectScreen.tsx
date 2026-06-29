@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { validateQR } from '../services/qr/qrService';
 import { SettingsModal } from '../frontend/modals/SettingsModal';
+import NotificationBell from '../components/notifications/NotificationBell';
 
 interface ModuleSelectScreenProps {
   onSelectGame:    () => void;
@@ -602,7 +603,7 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSe
             alt="SKM"
             style={{ width: 38, height: 38, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(215,25,32,0.5))', flexShrink: 0 }}
           />
-          <div>
+          <div style={{ flex: 1 }}>
             <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase', color: 'rgba(215,25,32,0.8)', margin: 0, fontFamily: 'monospace' }}>
               SKM EXPERIENCE
             </p>
@@ -610,6 +611,7 @@ export default function ModuleSelectScreen({ onSelectGame, onSelectTracker, onSe
               Choose Your <span style={{ color: '#D71920' }}>Mode</span>
             </h1>
           </div>
+          <NotificationBell size={20} style={{ background: 'rgba(215,25,32,0.06)' }} />
         </div>
 
         {/* ── Cards ── */}

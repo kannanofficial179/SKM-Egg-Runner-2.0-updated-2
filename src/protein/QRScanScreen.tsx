@@ -22,6 +22,11 @@ import {
 } from '../services/protein/proteinTrackerService';
 import { CameraIcon, EggIcon, CheckCircleIcon, AlertIcon } from './Icons';
 import { playChickSuccess, resumeAudioContext } from '../services/audio/chickSound';
+import {
+  notifyProteinAdded, notifyProteinGoalComplete,
+  notifyDuplicateEgg, notifyStreakMilestone, notifyProteinMilestone,
+} from '../services/notifications/notificationService';
+import { triggerAchievementPopup } from '../components/notifications/AchievementPopup';
 
 type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'duplicate' | 'consumed_other' | 'error';
 
@@ -241,6 +246,8 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       if (claimResult === 'consumed_by_self') {
         console.warn('[PROTEIN CLAIM] Already claimed by this user:', validation.eggCode);
         if (mountedRef.current) setPhase('duplicate');
+        // Non-fatal — fire duplicate notification
+        notifyDuplicateEgg(user.uid).catch(() => {});
         return;
       }
 
@@ -264,14 +271,49 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
 
       if (!mountedRef.current) return;
 
+      const todayProtein = ts?.totalProtein ?? 0;
+      const todayGoal    = stg.dailyGoal;
+
       setResult({
         protein:      PROTEIN_PER_EGG,
         streak:       streakInfo.currentStreak,
-        todayEggs:    ts?.totalEggs    ?? 0,
-        todayProtein: ts?.totalProtein ?? 0,
-        goal:         stg.dailyGoal,
+        todayEggs:    ts?.totalEggs ?? 0,
+        todayProtein,
+        goal:         todayGoal,
       });
       setPhase('success');
+
+      // Fire notifications (all non-fatal)
+      notifyProteinAdded(user.uid, PROTEIN_PER_EGG, todayProtein).catch(() => {});
+
+      if (todayProtein >= todayGoal) {
+        notifyProteinGoalComplete(user.uid, todayGoal).catch(() => {});
+        triggerAchievementPopup({
+          type: 'protein_milestone',
+          title: 'Daily Goal Reached!',
+          subtitle: `${todayProtein}g of protein today`,
+          value: `${todayGoal}g`,
+        });
+      }
+
+      // Streak milestones (3, 7, 14, 30, 60, 100 days)
+      const streak = streakInfo.currentStreak;
+      if ([3, 7, 14, 30, 60, 100].includes(streak)) {
+        notifyStreakMilestone(user.uid, streak).catch(() => {});
+        triggerAchievementPopup({
+          type: 'streak_milestone',
+          title: `${streak}-Day Streak!`,
+          subtitle: 'You\'re on fire! Keep scanning daily.',
+          value: `🔥 ${streak} Days`,
+        });
+      }
+
+      // Cumulative protein milestones
+      const lifetimeMs = [100, 500, 1000, 5000];
+      // We don't have the total here so check if todayProtein just crossed a nice round number
+      if (lifetimeMs.some(m => todayProtein >= m && todayProtein - PROTEIN_PER_EGG < m)) {
+        notifyProteinMilestone(user.uid, todayProtein).catch(() => {});
+      }
 
     } catch (err: unknown) {
       const msg = (err as { message?: string }).message ?? String(err);
