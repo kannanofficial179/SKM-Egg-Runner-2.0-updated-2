@@ -1,7 +1,7 @@
 // SKM Experience — Service Worker
 // Caches the app shell on install so the offline page works when there's no network.
 
-const CACHE = 'skm-v5';
+const CACHE = 'skm-v6';
 
 const PRECACHE = [
   '/',

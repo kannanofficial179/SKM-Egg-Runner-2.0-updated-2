@@ -10,70 +10,74 @@ import { getAuth } from 'firebase/auth';
 const RENDER_URL: string = (import.meta.env.VITE_RENDER_API_URL as string | undefined) ?? '';
 const ICON = '/THUMBS_POSE__Egg_-removebg-preview.png';
 
-// ─── Service Worker notification ──────────────────────────────────────────────
-// Strategy: post a message to the active SW controller telling it to call
-// self.registration.showNotification(). This is the only approach that works
-// on Android Chrome — direct new Notification() and reg.showNotification()
-// from the main thread are both blocked or silently dropped on Android.
+// ─── Show notification via FCM service worker ─────────────────────────────────
+// The FCM SW (firebase-messaging-sw.js) already has notification authority
+// from FCM registration. We post a SHOW_NOTIFICATION message to it so it
+// calls self.registration.showNotification() — this works on Android Chrome.
 
 async function showSWNotification(title: string, body: string, clickUrl = '/'): Promise<void> {
-  console.info('[Notify] showSWNotification called:', title);
+  console.info('[Notify] Attempting to show notification:', title);
 
-  if (!('Notification' in window)) {
-    console.warn('[Notify] FAILED — Notification API not available in this browser.');
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    console.warn('[Notify] Notifications not supported in this browser.');
     return;
   }
   if (Notification.permission !== 'granted') {
-    console.warn('[Notify] FAILED — Permission is:', Notification.permission);
-    return;
-  }
-  if (!('serviceWorker' in navigator)) {
-    console.warn('[Notify] No SW support — trying direct Notification()');
-    try { new Notification(title, { body, icon: ICON }); } catch { /* ignore */ }
+    console.warn('[Notify] Permission not granted:', Notification.permission);
     return;
   }
 
-  // Wait for the SW controller to be ready
-  let controller = navigator.serviceWorker.controller;
-  if (!controller) {
-    console.warn('[Notify] No active SW controller yet — waiting...');
-    try {
-      await navigator.serviceWorker.ready;
-      controller = navigator.serviceWorker.controller;
-    } catch { /* ignore */ }
-  }
+  const msg = {
+    type:  'SHOW_NOTIFICATION',
+    title,
+    body,
+    icon:  ICON,
+    tag:   'skm-notification',
+    url:   clickUrl,
+  };
 
-  if (controller) {
-    // Send message to SW — SW calls self.registration.showNotification()
-    controller.postMessage({
-      type:  'SHOW_NOTIFICATION',
-      title,
-      body,
-      icon:  ICON,
-      tag:   'skm-notification',
-      url:   clickUrl,
-    });
-    console.info('[Notify] ✓ Message sent to SW controller — notification will appear shortly.');
-    return;
-  }
-
-  // SW not controlling the page yet (first load before SW activates)
-  // Fall back to reg.showNotification() which works on desktop
-  console.warn('[Notify] No SW controller — trying reg.showNotification() fallback');
+  // Try FCM SW first (scope: /firebase-cloud-messaging-push-scope)
+  // It has notification authority from FCM, works on Android
   try {
-    const reg = await navigator.serviceWorker.getRegistration('/') ?? await navigator.serviceWorker.ready;
-    await reg.showNotification(title, {
+    const fcmReg = await navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope');
+    if (fcmReg?.active) {
+      fcmReg.active.postMessage(msg);
+      console.info('[Notify] ✓ Message sent to FCM SW — notification will appear.');
+      return;
+    }
+  } catch (e: any) {
+    console.warn('[Notify] FCM SW lookup failed:', e?.message);
+  }
+
+  // Try cache SW (scope: /)
+  try {
+    const cacheReg = await navigator.serviceWorker.getRegistration('/');
+    if (cacheReg?.active) {
+      cacheReg.active.postMessage(msg);
+      console.info('[Notify] ✓ Message sent to cache SW — notification will appear.');
+      return;
+    }
+  } catch (e: any) {
+    console.warn('[Notify] Cache SW lookup failed:', e?.message);
+  }
+
+  // Last resort: reg.showNotification() directly (works on desktop Chrome)
+  try {
+    const ready = await navigator.serviceWorker.ready;
+    await ready.showNotification(title, {
       body, icon: ICON, badge: ICON,
-      tag: 'skm-notification', data: { url: clickUrl },
+      tag: 'skm-notification',
+      data: { url: clickUrl },
     });
-    console.info('[Notify] ✓ Notification shown via reg.showNotification()');
+    console.info('[Notify] ✓ Notification shown via ready.showNotification()');
   } catch (err: any) {
-    console.warn('[Notify] reg.showNotification failed:', err?.message);
+    console.error('[Notify] All SW methods failed:', err?.message);
+    // Desktop absolute last resort
     try {
       new Notification(title, { body, icon: ICON });
-      console.info('[Notify] ✓ Notification shown via direct Notification() (desktop)');
+      console.info('[Notify] ✓ Notification shown via direct new Notification()');
     } catch (e2: any) {
-      console.error('[Notify] All notification methods failed:', e2?.message);
+      console.error('[Notify] FAILED — browser blocked all notification methods:', e2?.message);
     }
   }
 }

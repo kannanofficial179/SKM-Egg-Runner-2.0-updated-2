@@ -106,6 +106,31 @@ self.addEventListener('notificationclick', function(event) {
   );
 });
 
+// ─── Show notification on demand from main thread ─────────────────────────────
+// Main thread posts { type: 'SHOW_NOTIFICATION', title, body, icon, tag, url }
+// This SW has notification authority so showNotification works on Android.
+
+self.addEventListener('message', function(event) {
+  if (!event.data || event.data.type !== 'SHOW_NOTIFICATION') return;
+  var title = event.data.title || 'SKM';
+  var body  = event.data.body  || '';
+  var icon  = event.data.icon  || '/THUMBS_POSE__Egg_-removebg-preview.png';
+  var tag   = event.data.tag   || 'skm-notification';
+  var url   = event.data.url   || '/';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body:     body,
+      icon:     icon,
+      badge:    icon,
+      tag:      tag,
+      renotify: true,
+      vibrate:  [200, 100, 200],
+      data:     { url: url },
+    })
+  );
+});
+
 // ─── Action builder ───────────────────────────────────────────────────────────
 
 function buildActions(type) {
