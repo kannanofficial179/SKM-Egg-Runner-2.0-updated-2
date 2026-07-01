@@ -26,6 +26,7 @@ import {
   notifyProteinAdded, notifyProteinGoalComplete,
   notifyDuplicateEgg, notifyStreakMilestone, notifyProteinMilestone,
 } from '../services/notifications/notificationService';
+import { recordStreakDay } from '../services/protein/eggStreakService';
 
 type Phase = 'idle' | 'opening' | 'scanning' | 'processing' | 'success' | 'duplicate' | 'consumed_other' | 'error';
 
@@ -37,6 +38,8 @@ interface QRScanScreenProps {
 interface ScanResult {
   protein: number;
   streak: number;
+  streakIsNew: boolean;
+  isMilestone: boolean;
   todayEggs: number;
   todayProtein: number;
   goal: number;
@@ -257,8 +260,11 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
       }
 
       console.log('[PROTEIN ADDED] logging +', PROTEIN_PER_EGG, 'g to Firebase…');
-      const { streak: streakInfo } = await logEggScan(user.uid, validation.eggCode);
+      const { streak: streakInfo, prevStreak } = await logEggScan(user.uid, validation.eggCode);
       console.log('[FIREBASE UPDATED] protein_logs + daily_stats + streak written');
+
+      // Record this day in streak history subcollection for calendar view
+      recordStreakDay(user.uid).catch(() => {});
 
       // Play chick chirp — only on genuine success, never on error/duplicate
       playChickSuccess();
@@ -270,12 +276,16 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
 
       if (!mountedRef.current) return;
 
-      const todayProtein = ts?.totalProtein ?? 0;
-      const todayGoal    = stg.dailyGoal;
+      const todayProtein   = ts?.totalProtein ?? 0;
+      const todayGoal      = stg.dailyGoal;
+      const streakIsNew    = streakInfo.currentStreak > (prevStreak ?? 0);
+      const isMilestone    = [3, 7, 14, 30, 60, 100].includes(streakInfo.currentStreak);
 
       setResult({
         protein:      PROTEIN_PER_EGG,
         streak:       streakInfo.currentStreak,
+        streakIsNew,
+        isMilestone,
         todayEggs:    ts?.totalEggs ?? 0,
         todayProtein,
         goal:         todayGoal,
@@ -646,9 +656,42 @@ export default function QRScanScreen({ user, onScanSuccess }: QRScanScreenProps)
                 <CheckCircleIcon size={38} color="#fff" />
               </div>
               <h3 style={{ fontSize: 21, fontWeight: 900, color: '#1A1A1A', margin: '0 0 4px' }}>+{result.protein}g Protein Added!</h3>
-              <p style={{ fontSize: 12, color: '#666', margin: '0 0 18px' }}>
+              <p style={{ fontSize: 12, color: '#666', margin: '0 0 12px' }}>
                 Egg recorded successfully.
               </p>
+
+              {/* Streak celebration banner */}
+              {result.streakIsNew && (
+                <div style={{
+                  background: result.isMilestone
+                    ? 'linear-gradient(135deg,#D71920,#B31217)'
+                    : 'linear-gradient(135deg,#F59E0B,#D97706)',
+                  borderRadius: 16,
+                  padding: '12px 16px',
+                  marginBottom: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  animation: 'popIn 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+                }}>
+                  <span style={{ fontSize: 28 }}>
+                    {result.isMilestone
+                      ? (result.streak >= 30 ? '👑' : result.streak >= 14 ? '🔥🔥' : result.streak >= 7 ? '🔥' : '🐣')
+                      : '🔥'}
+                  </span>
+                  <div style={{ textAlign: 'left' }}>
+                    <p style={{ fontSize: 13, fontWeight: 900, color: '#fff', margin: 0 }}>
+                      {result.isMilestone ? `${result.streak}-Day Milestone!` : `${result.streak}-Day Streak!`}
+                    </p>
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', margin: '2px 0 0' }}>
+                      {result.isMilestone
+                        ? 'You hit a major milestone! Amazing!'
+                        : 'Keep going — streak extended!'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 14 }}>
                 <RBox label="Protein Added" value={`+${result.protein}g`} color="#D71920" bg="#FCE8E8" />
                 <RBox label="Day Streak"    value={`${result.streak}d`}   color="#22C55E" bg="#F0FDF4" />

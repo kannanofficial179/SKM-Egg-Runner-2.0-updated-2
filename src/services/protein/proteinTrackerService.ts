@@ -257,7 +257,7 @@ export async function checkProteinScanExists(uid: string, qrCode: string): Promi
 // ─────────────────────────────────────────────────────────────
 
 export async function logEggScan(uid: string, qrCode: string): Promise<{
-  entry: ProteinLogEntry; streak: StreakInfo; xpEarned: number; coinsEarned: number;
+  entry: ProteinLogEntry; streak: StreakInfo; prevStreak: number; xpEarned: number; coinsEarned: number;
 }> {
   // Dedup is now handled atomically by claimProteinScan() before this function
   // is called, so we skip the dedup transaction here and write the log entry directly.
@@ -281,7 +281,9 @@ export async function logEggScan(uid: string, qrCode: string): Promise<{
   };
 
   await updateDailyStats(uid, dateKey, entry.protein, entry.calories, 1);
-  const streakInfo = await updateStreak(uid, dateKey);
+  const prevSnapData  = await getDoc(doc(db, 'users', uid)).then(s => s.exists() ? s.data() : {});
+  const prevStreak    = prevSnapData.currentConsumptionStreak ?? 0;
+  const streakInfo    = await updateStreak(uid, dateKey);
   await Promise.all([
     addRewards(uid, XP_PER_EGG, COINS_PER_EGG),
     updateChallengeProgress(uid, 'scan_egg', 1),
@@ -291,6 +293,7 @@ export async function logEggScan(uid: string, qrCode: string): Promise<{
   return {
     entry: { ...entry, id: entryId ?? '' },
     streak: streakInfo,
+    prevStreak,
     xpEarned: XP_PER_EGG,
     coinsEarned: COINS_PER_EGG,
   };

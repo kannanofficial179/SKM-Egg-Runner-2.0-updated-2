@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"d:\\\\PROJECTS\\\\SKM-Egg-Runner-2.0-updated-2\\\\\" | head -20)",
+      "Read(//d/PROJECTS/**)"
+    ]
+  }
+}

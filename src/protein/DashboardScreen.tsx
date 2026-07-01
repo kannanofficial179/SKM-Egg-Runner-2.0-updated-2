@@ -17,10 +17,11 @@ interface DashboardScreenProps {
   onScanQR: () => void;
   onViewAnalytics: () => void;
   onViewLog: () => void;
+  onViewStreaks: () => void;
   refreshKey: number;
 }
 
-export default function DashboardScreen({ user, onScanQR, onViewAnalytics, onViewLog, refreshKey }: DashboardScreenProps) {
+export default function DashboardScreen({ user, onScanQR, onViewAnalytics, onViewLog, onViewStreaks, refreshKey }: DashboardScreenProps) {
   const [todayStats, setTodayStats] = useState<DailyStats | null>(null);
   const [streak,     setStreak]     = useState<StreakInfo>({ currentStreak: 0, bestStreak: 0, lastActiveDate: '' });
   const [weekData,   setWeekData]   = useState<WeeklyData[]>([]);
@@ -150,12 +151,45 @@ export default function DashboardScreen({ user, onScanQR, onViewAnalytics, onVie
           <MiniStat icon={<TargetIcon size={15} color="#22C55E" />} label="Goal"          value={pct >= 100 ? 'Done!' : `${remaining}g left`} color={pct >= 100 ? '#22C55E' : '#666'} />
         </div>
 
+        {/* ── Streak Card ── */}
+        <button onClick={onViewStreaks} style={{
+          width: '100%', marginTop: 12,
+          background: streak.currentStreak >= 30
+            ? 'linear-gradient(135deg,#7C3AED,#EC4899)'
+            : streak.currentStreak >= 7
+            ? 'linear-gradient(135deg,#B45309,#D97706)'
+            : 'linear-gradient(135deg,#D71920,#B31217)',
+          borderRadius: 20, padding: '16px 18px',
+          border: 'none', cursor: 'pointer',
+          boxShadow: '0 6px 20px rgba(215,25,32,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', pointerEvents: 'none' }} />
+          <div style={{ textAlign: 'left' }}>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 700, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Egg Streak</p>
+            <p style={{ fontSize: 28, fontWeight: 900, color: '#fff', margin: 0, lineHeight: 1 }}>
+              {streak.currentStreak} <span style={{ fontSize: 14, fontWeight: 700 }}>days</span>
+            </p>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', margin: '4px 0 0', fontWeight: 600 }}>
+              {streak.currentStreak === 0 ? 'Start scanning to begin' : `Best: ${streak.bestStreak}d`}
+            </p>
+          </div>
+          <div style={{ fontSize: 52, lineHeight: 1, filter: 'drop-shadow(0 0 8px rgba(255,200,50,0.5))' }}>
+            {streak.currentStreak >= 30 ? '👑'
+              : streak.currentStreak >= 14 ? '🔥🔥'
+              : streak.currentStreak >= 7  ? '🔥'
+              : streak.currentStreak >= 3  ? '🐣'
+              : '🥚'}
+          </div>
+        </button>
+
         {/* ── Quick Actions ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
           <QuickAction icon={<CameraIcon size={20} color="#fff" />}       label="Scan QR"    sub="Scan SKM Egg"   primary onClick={onScanQR} />
           <QuickAction icon={<FoodLogIcon size={20} color="#D71920" />}   label="Food Log"   sub="Manual entry"   onClick={onViewLog} />
           <QuickAction icon={<AnalyticsIcon size={20} color="#D71920" />} label="Analytics"  sub="View trends"    onClick={onViewAnalytics} />
-          <QuickAction icon={<TrendUpIcon size={20} color="#D71920" />}   label="Weekly"     sub={`${streak.currentStreak} day streak`} onClick={onViewAnalytics} />
+          <QuickAction icon={<TrendUpIcon size={20} color="#D71920" />}   label="Streaks"    sub={`${streak.currentStreak} day streak`} onClick={onViewStreaks} />
         </div>
 
         {/* ── Weekly Chart ── */}

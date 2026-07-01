@@ -6,17 +6,26 @@ import QRScanScreen      from '../protein/QRScanScreen';
 import ConsumptionScreen from '../protein/ConsumptionScreen';
 import AnalyticsScreen   from '../protein/AnalyticsScreen';
 import ProfileScreen     from '../protein/ProfileScreen';
+import EggStreakScreen   from '../protein/EggStreakScreen';
 import { HomeIcon, CameraIcon, FoodLogIcon, AnalyticsIcon, UserIcon } from '../protein/Icons';
 import NotificationBell from '../components/notifications/NotificationBell';
 
-type Tab = 'dashboard' | 'scan' | 'log' | 'stats' | 'profile';
+type Tab = 'dashboard' | 'scan' | 'log' | 'stats' | 'profile' | 'streaks';
 
 interface ProteinTrackerScreenProps { onBack: () => void; }
+
+function FlameNavIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? '#D71920' : '#bbb'} stroke="none">
+      <path d="M12 2C12 2 8 7 8 12a4 4 0 008 0c0-2.5-1.5-5-4-10zM8.5 18.5A5.5 5.5 0 0112 8c0 3 1 5.5 3.5 7A4 4 0 018.5 18.5z"/>
+    </svg>
+  );
+}
 
 const PRIMARY_NAV: { key: Tab; label: string; icon: (a: boolean) => React.ReactNode }[] = [
   { key: 'dashboard', label: 'Home',    icon: (a) => <HomeIcon      size={20} color={a ? '#D71920' : '#bbb'} /> },
   { key: 'scan',      label: 'Scan',    icon: (a) => <CameraIcon    size={20} color={a ? '#D71920' : '#bbb'} /> },
-  { key: 'log',       label: 'Log',     icon: (a) => <FoodLogIcon   size={20} color={a ? '#D71920' : '#bbb'} /> },
+  { key: 'streaks',   label: 'Streaks', icon: (a) => <FlameNavIcon  active={a} /> },
   { key: 'stats',     label: 'Stats',   icon: (a) => <AnalyticsIcon size={20} color={a ? '#D71920' : '#bbb'} /> },
   { key: 'profile',   label: 'Profile', icon: (a) => <UserIcon      size={20} color={a ? '#D71920' : '#bbb'} /> },
 ];
@@ -90,11 +99,13 @@ export default function ProteinTrackerScreen({ onBack }: ProteinTrackerScreenPro
             onScanQR={() => setTab('scan')}
             onViewAnalytics={() => setTab('stats')}
             onViewLog={() => setTab('log')}
+            onViewStreaks={() => setTab('streaks')}
           />
         )}
         {tab === 'scan'    && <QRScanScreen      user={typedUser} onScanSuccess={handleScanSuccess} />}
         {tab === 'log'     && <ConsumptionScreen  user={typedUser} refreshKey={refreshKey} onScanQR={() => setTab('scan')} />}
         {tab === 'stats'   && <AnalyticsScreen    user={typedUser} refreshKey={refreshKey} />}
+        {tab === 'streaks' && <EggStreakScreen    user={typedUser} refreshKey={refreshKey} onScanQR={() => setTab('scan')} />}
         {tab === 'profile' && (
           <ProfileScreen
             user={typedUser}
