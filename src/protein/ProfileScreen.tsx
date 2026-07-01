@@ -320,46 +320,6 @@ export default function ProfileScreen({ user, onLogout, onDataDeleted, onBackToM
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* ── WHITE TOP HEADER BAR ── */}
-      <div style={{
-        height: 64, background: '#fff', flexShrink: 0,
-        display: 'flex', alignItems: 'center',
-        padding: '0 16px', gap: 10,
-        borderBottom: '1px solid #F0F0F0',
-        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
-      }}>
-        {/* Back arrow — plain, no pill */}
-        <button onClick={onBackToMenu} style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: '#F5F5F5', border: 'none',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}
-          onPointerDown={e => (e.currentTarget.style.background = '#EBEBEB')}
-          onPointerUp={e   => (e.currentTarget.style.background = '#F5F5F5')}
-          onPointerLeave={e => (e.currentTarget.style.background = '#F5F5F5')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-        </button>
-
-        {/* Mascot + title */}
-        <span style={{ fontSize: 26, lineHeight: 1, flexShrink: 0 }}>🥚</span>
-        <span style={{ fontSize: 16, fontWeight: 900, color: '#1A1A1A', letterSpacing: -0.3 }}>SKM Protein</span>
-
-        <div style={{ flex: 1 }} />
-
-        {/* Avatar chip */}
-        {user.photoURL ? (
-          <img src={user.photoURL} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #D71920', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg,#D71920,#B31217)', border: '2px solid #D71920', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 900, color: '#fff' }}>{playerName[0]?.toUpperCase() ?? '?'}</span>
-          </div>
-        )}
-      </div>
-
       {/* ── RED PROFILE HERO ── */}
       <div style={{
         background: 'linear-gradient(160deg,#D71920 0%,#B31217 55%,#7C1015 100%)',

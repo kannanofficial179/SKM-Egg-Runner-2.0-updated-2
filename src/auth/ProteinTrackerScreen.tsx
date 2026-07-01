@@ -58,12 +58,32 @@ export default function ProteinTrackerScreen({ onBack }: ProteinTrackerScreenPro
       {/* ── Top App Bar ── */}
       <div style={{ flexShrink: 0, background: '#fff', borderBottom: '1px solid #F0F0F0', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
+
+          {/* Left: back arrow + mascot + title */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={onBack}
+              style={{
+                width: 32, height: 32, borderRadius: 9,
+                background: '#F5F5F5', border: 'none',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}
+              onPointerDown={e => (e.currentTarget.style.background = '#EBEBEB')}
+              onPointerUp={e   => (e.currentTarget.style.background = '#F5F5F5')}
+              onPointerLeave={e => (e.currentTarget.style.background = '#F5F5F5')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 5l-7 7 7 7"/>
+              </svg>
+            </button>
             <img src="/egg mus_Image_v5vrg3v5vrg3v5vr-removebg-preview.png" alt="SKM"
               style={{ width: 26, height: 26, objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(215,25,32,0.3))' }} />
             <span style={{ fontWeight: 900, fontSize: 14, color: '#D71920' }}>SKM</span>
             <span style={{ fontWeight: 900, fontSize: 14, color: '#1A1A1A' }}>Protein</span>
           </div>
+
+          {/* Right: notification + scan + avatar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NotificationBell size={18} />
             <button onClick={() => setTab('scan')} style={{
