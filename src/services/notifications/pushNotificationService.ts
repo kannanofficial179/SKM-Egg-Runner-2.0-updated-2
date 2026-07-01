@@ -77,14 +77,21 @@ async function getFCMServiceWorker(): Promise<ServiceWorkerRegistration | null> 
 
   try {
     // FCM requires the SW to be registered at scope '/' to create push subscriptions.
-    // Check if already registered at root scope.
+    // Check if already registered at root scope with the correct SW file.
     const existing = await navigator.serviceWorker.getRegistration('/');
-    if (existing && existing.active) {
-      console.info('[FCM] STEP 2 — Service Worker already registered at scope: / ✓');
-      _fcmSwReg = existing;
-      return existing;
+    if (existing) {
+      const swUrl = existing.active?.scriptURL ?? existing.installing?.scriptURL ?? existing.waiting?.scriptURL ?? '';
+      if (swUrl.includes('firebase-messaging-sw.js') && existing.active) {
+        console.info('[FCM] STEP 2 — firebase-messaging-sw.js already active at scope: / ✓');
+        _fcmSwReg = existing;
+        return existing;
+      }
+      // Wrong SW at root (e.g. old sw.js) — unregister it first
+      console.info('[FCM] STEP 2 — Wrong SW at scope /, unregistering:', swUrl);
+      await existing.unregister();
     }
 
+    console.info('[FCM] STEP 2 — Registering firebase-messaging-sw.js at scope /...');
     const reg = await navigator.serviceWorker.register(FCM_SW_URL, { scope: '/' });
     console.info('[FCM] STEP 2 — Service Worker registered. State:', reg.installing?.state ?? reg.active?.state ?? 'unknown');
 
