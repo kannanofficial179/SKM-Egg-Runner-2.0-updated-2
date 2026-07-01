@@ -97,7 +97,7 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
       {/* ── Hero Card ── */}
       <div style={{
         background: heroGrad,
-        padding: '28px 20px 32px',
+        padding: '36px 20px 44px',
         textAlign: 'center',
         position: 'relative',
         overflow: 'hidden',
@@ -123,6 +123,7 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
           </div>
         )}
 
+        {/* Flame emoji */}
         <div style={{
           fontSize: 64, lineHeight: 1, marginBottom: 10,
           filter: fireLevel >= 2 ? 'drop-shadow(0 0 16px rgba(255,200,50,0.7))' : 'none',
@@ -131,16 +132,21 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
           {emoji}
         </div>
 
+        {/* Streak number */}
         <div style={{
-          fontSize: currentStreak >= 100 ? 64 : 80,
+          fontSize: currentStreak >= 100 ? 72 : 88,
           fontWeight: 900, color: '#fff', lineHeight: 1,
-          letterSpacing: -2, textShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          letterSpacing: -3, textShadow: '0 4px 24px rgba(0,0,0,0.35)',
         }}>
           {currentStreak}
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.75)', marginTop: 2, letterSpacing: 1, textTransform: 'uppercase' }}>
-          Day Streak
+
+        {/* DAY STREAK label */}
+        <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.65)', marginTop: 4, letterSpacing: 3, textTransform: 'uppercase' }}>
+          DAY STREAK
         </div>
+
+        {/* Title pill */}
         <div style={{
           display: 'inline-block', marginTop: 10,
           padding: '5px 16px', borderRadius: 50,
@@ -148,6 +154,28 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
           fontSize: 13, fontWeight: 800, color: '#fff', letterSpacing: 0.3,
         }}>
           {title}
+        </div>
+
+        {/* Glassmorphism stats bar */}
+        <div style={{
+          background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(12px)',
+          borderRadius: 20, padding: '12px 0', marginTop: 20,
+          display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+        }}>
+          {[
+            { value: bestStreak,        label: 'Best Streak', icon: '🏆', border: true  },
+            { value: totalEggDays,      label: 'Total Eggs',  icon: '🥚', border: true  },
+            { value: completedBatches,  label: 'Batches Done',icon: '🔥', border: false },
+          ].map((cell, ci) => (
+            <div key={ci} style={{
+              textAlign: 'center',
+              borderRight: cell.border ? '1px solid rgba(255,255,255,0.15)' : 'none',
+            }}>
+              <div style={{ fontSize: 14, lineHeight: 1, marginBottom: 4 }}>{cell.icon}</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1 }}>{cell.value}</div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{cell.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -192,13 +220,6 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
       )}
 
       <div style={{ padding: '0 14px' }}>
-
-        {/* ── Stats ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
-          <StatTile label="Best Streak" value={`${bestStreak}d`}        emoji="🏆" />
-          <StatTile label="Total Eggs"  value={String(totalEggDays)}    emoji="🥚" />
-          <StatTile label="Batches Done" value={String(completedBatches)} emoji="🔥" />
-        </div>
 
         {/* ── Weekly Batches ── */}
         <div style={{ background: '#fff', borderRadius: 20, padding: 16, marginTop: 12, boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
@@ -331,16 +352,29 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
                       ))}
                     </div>
 
-                    {/* Day bars */}
+                    {/* Day mini-cards */}
                     <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
-                      {batch.days.map((d, i) => (
-                        <div key={i} style={{
-                          flex: 1, height: 10, borderRadius: 5,
-                          background: d.completed ? '#F59E0B' : '#E8E8E8',
-                          boxShadow: d.completed ? '0 2px 6px rgba(245,158,11,0.4)' : 'none',
-                          transition: 'background 300ms',
-                        }} />
-                      ))}
+                      {batch.days.map((d, i) => {
+                        const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+                        const isPast   = d.completed;
+                        const isCurDay = !d.completed && i === batch.days.filter(x => x.completed).length;
+                        return (
+                          <div key={i} style={{
+                            flex: 1, borderRadius: 10, padding: '6px 2px', textAlign: 'center',
+                            background: isPast ? 'linear-gradient(160deg,#F59E0B,#D97706)' : isCurDay ? 'rgba(245,158,11,0.12)' : '#F0F0F0',
+                            border: isCurDay ? '1.5px solid #F59E0B' : '1.5px solid transparent',
+                            boxShadow: isPast ? '0 3px 8px rgba(245,158,11,0.35)' : 'none',
+                            transition: 'all 200ms',
+                          }}>
+                            <div style={{ fontSize: isPast ? 14 : 10, lineHeight: 1, marginBottom: 2 }}>
+                              {isPast ? '🥚' : isCurDay ? '🔥' : '·'}
+                            </div>
+                            <div style={{ fontSize: 7, fontWeight: 800, color: isPast ? '#fff' : isCurDay ? '#D97706' : '#bbb' }}>
+                              {dayNames[i]}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Days remaining */}
@@ -464,6 +498,7 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
                 border: claimable ? '1.5px solid #F59E0B' : isClaimed ? '1.5px solid #86EFAC' : '1.5px solid transparent',
                 opacity: reached ? 1 : 0.55,
                 transition: 'all 200ms',
+                animation: claimable ? 'milestone-glow 2s ease-in-out infinite' : 'none',
               }}>
                 {/* SVG sticker */}
                 <div style={{
@@ -550,6 +585,10 @@ export default function EggStreakScreen({ user, refreshKey, onScanQR }: EggStrea
         @keyframes batch-pulse {
           0%, 100% { opacity: 1; }
           50%       { opacity: 0.65; }
+        }
+        @keyframes milestone-glow {
+          0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+          50%      { box-shadow: 0 0 0 6px rgba(245,158,11,0.25); }
         }
       `}</style>
     </div>

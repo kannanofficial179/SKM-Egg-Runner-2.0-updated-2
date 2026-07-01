@@ -311,39 +311,120 @@ export default function ProfileScreen({ user, onLogout, onDataDeleted, onBackToM
   );
 
   // ── MAIN PROFILE ───────────────────────────────────────────
+  const streakLevel =
+    streak.currentStreak >= 100 ? 'Legend' :
+    streak.currentStreak >= 30  ? 'Master' :
+    streak.currentStreak >= 14  ? 'Pro' :
+    streak.currentStreak >= 7   ? 'Rising' : 'Starter';
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#D71920,#B31217)', padding: '20px 20px 52px', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
-        <h2 style={{ fontSize: 17, fontWeight: 900, color: '#fff', margin: '0 0 20px' }}>Profile</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {user.photoURL ? (
-            <img src={user.photoURL} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,0.5)' }} />
-          ) : (
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: '3px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 26, fontWeight: 900, color: '#fff' }}>{playerName[0].toUpperCase()}</span>
+
+      {/* ── PREMIUM HEADER ── */}
+      <div style={{
+        background: 'linear-gradient(160deg,#D71920 0%,#B31217 55%,#7C1015 100%)',
+        padding: '0 0 28px', flexShrink: 0, position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Decorative circles */}
+        <div style={{ position: 'absolute', top: -60, right: -60, width: 220, height: 220, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -40, left: -30, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
+
+        {/* Navigation bar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 20px' }}>
+          <button onClick={onBackToMenu} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 20, padding: '7px 14px 7px 10px',
+            cursor: 'pointer', backdropFilter: 'blur(8px)',
+          }}>
+            <span style={{ fontSize: 16, lineHeight: 1 }}>←</span>
+            <span style={{ fontSize: 13, lineHeight: 1 }}>🥚</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>SKM Protein</span>
+          </button>
+
+          {/* Edit profile shortcut */}
+          <button
+            onClick={() => { setProfile({ playerName, age: String(userDoc.age ?? ''), gender: String(userDoc.gender ?? ''), height: String(userDoc.height ?? ''), weight: String(userDoc.weight ?? ''), goalWeight: String(userDoc.goalWeight ?? ''), phone: String(userDoc.phone ?? '') }); setView('edit_profile'); }}
+            style={{
+              width: 36, height: 36, borderRadius: 12,
+              background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <EditIcon size={16} color="#fff" />
+          </button>
+        </div>
+
+        {/* Avatar + name row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 20px 20px' }}>
+          {/* Avatar */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="" style={{ width: 76, height: 76, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,0.6)' }} />
+            ) : (
+              <div style={{ width: 76, height: 76, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', border: '3px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 30, fontWeight: 900, color: '#fff' }}>{playerName[0]?.toUpperCase() ?? '?'}</span>
+              </div>
+            )}
+            {/* Level badge */}
+            <div style={{
+              position: 'absolute', bottom: -4, right: -4,
+              background: 'linear-gradient(135deg,#F59E0B,#D97706)',
+              borderRadius: 8, padding: '2px 6px',
+              fontSize: 8, fontWeight: 900, color: '#fff',
+              border: '2px solid #D71920', whiteSpace: 'nowrap',
+            }}>
+              {streakLevel}
             </div>
-          )}
-          <div>
-            <h3 style={{ fontSize: 20, fontWeight: 900, color: '#fff', margin: 0 }}>{playerName}</h3>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: '2px 0' }}>{user.email}</p>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', margin: 0 }}>Joined {joinedDate}</p>
           </div>
+
+          {/* Name + meta */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h3 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 2px', letterSpacing: -0.3 }}>{playerName}</h3>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '2px 8px' }}>
+                🔥 {streak.currentStreak}d streak
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '2px 8px' }}>
+                🏆 {claimed.size}/{MILESTONES.length} stickers
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Glassmorphism stats bar */}
+        <div style={{
+          margin: '0 16px',
+          background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderRadius: 20, padding: '14px 0',
+          display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+          border: '1px solid rgba(255,255,255,0.12)',
+        }}>
+          {[
+            { value: streak.currentStreak, label: 'Streak', unit: 'd' },
+            { value: streak.bestStreak,    label: 'Best',   unit: 'd' },
+            { value: (userDoc.lifetimeConsumption as number) ?? 0, label: 'Eggs', unit: '' },
+          ].map((s, i) => (
+            <div key={s.label} style={{
+              textAlign: 'center',
+              borderRight: i < 2 ? '1px solid rgba(255,255,255,0.12)' : 'none',
+            }}>
+              <p style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0, lineHeight: 1 }}>
+                {s.value}{s.unit}
+              </p>
+              <p style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.55)', margin: '3px 0 0', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {s.label}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90, marginTop: -16 }}>
-        <div style={{ padding: '0 16px' }}>
-
-          {/* Health stats */}
-          <div style={{ background: '#fff', borderRadius: 24, padding: 18, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              <StatTile icon={<FlameIcon size={16} color="#D71920" />} value={streak.currentStreak}                            label="Streak"      />
-              <StatTile icon={<FlameIcon size={16} color="#8B5CF6" />} value={streak.bestStreak}                               label="Best Streak" color="#8B5CF6" />
-              <StatTile icon={<EggIcon   size={16} color="#D71920" />} value={(userDoc.lifetimeConsumption as number) ?? 0}    label="Total Eggs"  />
-            </div>
-          </div>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90, marginTop: 0 }}>
+        <div style={{ padding: '14px 16px 0' }}>
 
           {/* Account info */}
           <SectionCard title="Account" style={{ marginTop: 14 }}>
